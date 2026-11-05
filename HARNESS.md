@@ -40,6 +40,14 @@ pip install -e ".[dev,ui]"
 
 > [!NOTE]
 > PyMuPDF is imported via `import fitz`. It is part of the approved thesis stack in `pyproject.toml` (`pymupdf>=1.23.0`) for offline PDF ingestion (LAW 2). Ensure `pymupdf` is installed in your active environment.
+> If using `transformers>=4.57`, ensure compatible tokenizer versions via `pip install "tokenizers>=0.22.0,<=0.23.0" "huggingface-hub>=0.34.0,<1.0"`.
+
+### Offline Execution & Internet Connectivity
+
+The entire system is designed for **100% offline execution** (LAW 2):
+- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet.
+- **Deterministic Simulation Mode (Fast Offline)**: Runs completely without internet or external model downloads, using purely local hash embeddings and mock verification.
+- **Live Ollama + Local HF Mode**: Once Ollama models are pulled and HuggingFace weights (`all-MiniLM-L6-v2`, `cross-encoder/nli-deberta-v3-small`) are cached in `~/.cache/huggingface`, execution runs 100% locally on CPU/loopback with zero internet connectivity.
 
 ---
 
