@@ -15,19 +15,29 @@ from vrag.evaluator import (
     compute_suite_statistics,
     export_summary_json,
     export_telemetry_csv,
+    run_student_pdf_benchmark,
 )
-from vrag.generator import OllamaGenerator
+from vrag.generator import OllamaGenerator, check_ollama_status
 from vrag.models import APPROVED_MODELS, NLILabel, NLIScore, TrialTelemetry
 
 console = Console()
 
 
+def format_metric_value(value: float, unit: str, signed: bool = False) -> str:
+    """Format a metric value with its unit ('%' or 's')."""
+    if unit == "s":
+        fmt = f"{value:+.4f}s" if signed else f"{value:.4f}s"
+        return fmt
+    fmt = f"{value:+.2f}%" if signed else f"{value:.2f}%"
+    return fmt
+
+
 def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
-    """Build a Rich comparative table for Condition A vs Condition B."""
-    table = Table(title="Condition A (Baseline RAG) vs. Condition B (Verification-Driven RAG)")
-    table.add_column("Metric", style="bold cyan")
-    table.add_column("Condition A (Mean)", justify="right")
-    table.add_column("Condition B (Mean)", justify="right")
+    """Build a Rich comparative table for Condition A vs Condition B across the 4 core metrics."""
+    table = Table(title="Condition A (Base RAG) vs. Condition B (Verification-Driven RAG)")
+    table.add_column("Metric", style="bold cyan", no_wrap=True)
+    table.add_column("Base RAG (Mean)", justify="right")
+    table.add_column("Verified RAG (Mean)", justify="right")
     table.add_column("Delta (B - A)", justify="right", style="bold green")
     table.add_column("Paired t-stat", justify="right")
     table.add_column("p-value", justify="right", style="bold yellow")
@@ -35,9 +45,9 @@ def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
     for res in results:
         table.add_row(
             res.metric_name,
-            f"{res.mean_baseline_a:.4f}",
-            f"{res.mean_verified_b:.4f}",
-            f"{res.mean_delta:+.4f}",
+            format_metric_value(res.mean_baseline_a, res.unit),
+            format_metric_value(res.mean_verified_b, res.unit),
+            format_metric_value(res.mean_delta, res.unit, signed=True),
             f"{res.t_statistic:.4f}",
             f"{res.t_pvalue:.4e}",
         )
@@ -45,14 +55,16 @@ def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
 
 
 def render_trial_telemetry_table(trials: list[TrialTelemetry]) -> Table:
-    """Build a per-trial Rich table showing timings, confusion matrix, and RAM usage."""
+    """Build a per-trial Rich table showing the 4 core metrics, confusion matrix, and RAM usage."""
     table = Table(title="Per-Trial Execution Telemetry")
     table.add_column("Trial ID", style="cyan")
     table.add_column("Model", style="magenta")
     table.add_column("Mode")
-    table.add_column("FActScore", justify="right")
+    table.add_column("FActScore (%)", justify="right")
+    table.add_column("NLI Consistency (%)", justify="right")
+    table.add_column("Citation Acc (%)", justify="right")
+    table.add_column("Latency (s)", justify="right")
     table.add_column("TP/TN/FP/FN", justify="center")
-    table.add_column("t_total (s)", justify="right")
     table.add_column("RAM (MB)", justify="right")
 
     for t in trials:
@@ -61,9 +73,11 @@ def render_trial_telemetry_table(trials: list[TrialTelemetry]) -> Table:
             t.trial_id,
             t.model_name,
             t.mode.value,
-            f"{t.atomic_factscore:.3f}",
+            f"{t.factual_precision_pct:.1f}%",
+            f"{t.entailment_consistency_pct:.1f}%",
+            f"{t.citation_accuracy_pct:.1f}%",
+            f"{t.computational_latency_sec:.4f}s",
             f"{cm.tp}/{cm.tn}/{cm.fp}/{cm.fn}",
-            f"{t.latencies.total_seconds:.4f}",
             f"{t.peak_ram_mb:.1f}",
         )
     return table
@@ -175,14 +189,15 @@ def main(argv: list[str] | None = None) -> int:
 
     pdf_path = Path(args.pdf)
     pdf_bytes = pdf_path.read_bytes()
-    evaluator = ComparativeEvaluator()
-    pairs = evaluator.run_sequential_model_sweep(
-        documents=[(pdf_path.stem, pdf_bytes, args.query)],
+    ollama_live = check_ollama_status()
+    pairs, stats = run_student_pdf_benchmark(
+        pdf_bytes=pdf_bytes,
+        pdf_name=pdf_path.name,
         models=APPROVED_MODELS,
         top_k=3,
+        simulation_mode=not ollama_live,
     )
     all_trials = [t for pair in pairs for t in pair]
-    stats = compute_suite_statistics(pairs)
 
     out_dir = Path(args.output_dir)
     export_telemetry_csv(all_trials, out_dir / "telemetry.csv")
