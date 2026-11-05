@@ -17,6 +17,10 @@ else
     PYTHON_BIN="$(command -v python3)"
 fi
 
+if ! "$PYTHON_BIN" -c "import fitz" >/dev/null 2>&1; then
+    echo "Notice: PyMuPDF ('fitz') not detected in ${PYTHON_BIN}. Run: ${PYTHON_BIN} -m pip install pymupdf" >&2
+fi
+
 echo "============================================================"
 echo " [vrag] Stage 1/4: Ruff Lint Check"
 echo "============================================================"
