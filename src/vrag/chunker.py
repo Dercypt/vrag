@@ -26,14 +26,25 @@ def extract_pdf_pages(source: bytes | str | Path) -> list[PDFPage]:
         raw_bytes = source
 
     if raw_bytes.startswith(b"%PDF"):
-        import fitz  # type: ignore[import-untyped]
+        try:
+            import fitz  # type: ignore[import-untyped]
+        except (ImportError, ModuleNotFoundError) as err:
+            raise ModuleNotFoundError(
+                "PyMuPDF ('fitz') is required to parse PDF documents. "
+                "Please install it using 'pip install pymupdf' or 'pip install -e .'."
+            ) from err
 
         pages: list[PDFPage] = []
-        with fitz.open(stream=raw_bytes, filetype="pdf") as doc:
-            for idx, page in enumerate(doc, start=1):
-                txt = page.get_text("text").strip()
-                if txt:
-                    pages.append(PDFPage(page_number=idx, text=txt))
+        try:
+            with fitz.open(stream=raw_bytes, filetype="pdf") as doc:
+                for idx, page in enumerate(doc, start=1):
+                    txt = page.get_text("text").strip()
+                    if txt:
+                        pages.append(PDFPage(page_number=idx, text=txt))
+        except Exception as err:
+            if isinstance(err, (RuntimeError, ValueError)) or "broken document" in str(err).lower():
+                raise ValueError(f"Failed to parse corrupt PDF document: {err}") from err
+            raise
         return pages
 
     decoded = raw_bytes.decode("utf-8", errors="replace")

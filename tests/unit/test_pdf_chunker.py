@@ -14,6 +14,26 @@ from vrag.chunker import (
 from vrag.models import PDFPage
 
 
+def test_extract_pdf_pages_missing_fitz_raises_descriptive_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    orig_import = builtins.__import__
+
+    def mock_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "fitz":
+            raise ModuleNotFoundError("No module named 'fitz'")
+        return orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    with pytest.raises(
+        ModuleNotFoundError,
+        match="PyMuPDF.*fitz.*pip install pymupdf",
+    ):
+        extract_pdf_pages(b"%PDF-1.4 dummy header")
+
+
 def test_extract_pdf_pages_from_formfeed_bytes_preserves_page_numbers() -> None:
     raw_doc = b"Page one introduction text.\fPage two methodology text.\f   \fPage four results."
     pages = extract_pdf_pages(raw_doc)
