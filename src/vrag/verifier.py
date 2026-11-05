@@ -61,7 +61,15 @@ def default_deberta_nli_scorer(premise: str, hypothesis: str) -> NLIScore:
     """Score (premise, hypothesis) with local cross-encoder/nli-deberta-v3-small."""
     import math
 
-    from sentence_transformers import CrossEncoder
+    try:
+        from sentence_transformers import CrossEncoder
+    except ImportError as err:
+        raise ImportError(
+            f"Failed to import cross-encoder / transformers: {err}. "
+            "Ensure tokenizers and transformers versions are compatible "
+            "(e.g., pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0' "
+            "or pass an injectable nli_scorer / use Simulation Mode)."
+        ) from err
 
     model = CrossEncoder("cross-encoder/nli-deberta-v3-small", device="cpu")
     logits = model.predict([(premise, hypothesis)])[0]

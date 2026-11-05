@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from vrag.models import Chunk, NLILabel, NLIScore
 from vrag.verifier import (
     evaluate_unverified_summary,
@@ -66,3 +68,28 @@ def test_verify_and_prune_summary_handles_empty_input() -> None:
     assert report.verified_summary == ""
     assert report.claim_results == ()
     assert report.confusion_matrix.total == 0
+
+
+def test_deberta_nli_scorer_import_error_provides_actionable_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    from vrag.verifier import default_deberta_nli_scorer
+
+    orig_import = builtins.__import__
+
+    def mock_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if "sentence_transformers" in name:
+            raise ImportError(
+                "tokenizers>=0.22.0,<=0.23.0 is required for a normal functioning of this module, "
+                "but found tokenizers==0.21.1."
+            )
+        return orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    with pytest.raises(
+        ImportError,
+        match="Ensure tokenizers and transformers versions are compatible",
+    ):
+        default_deberta_nli_scorer("premise", "hypothesis")

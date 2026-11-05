@@ -48,3 +48,27 @@ def test_retriever_handles_empty_index_zero_vectors_and_invalid_top_k() -> None:
 
     with pytest.raises(ValueError, match="top_k must be positive"):
         retriever.retrieve("any query", top_k=0)
+
+
+def test_retriever_import_error_provides_actionable_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    orig_import = builtins.__import__
+
+    def mock_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if "sentence_transformers" in name:
+            raise ImportError(
+                "tokenizers>=0.22.0,<=0.23.0 is required for a normal functioning of this module, "
+                "but found tokenizers==0.21.1."
+            )
+        return orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    retriever = LocalVectorRetriever(embed_fn=None)
+    with pytest.raises(
+        ImportError,
+        match="Ensure tokenizers and transformers versions are compatible",
+    ):
+        retriever._encode(["test text"])
