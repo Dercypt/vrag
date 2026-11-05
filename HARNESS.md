@@ -49,5 +49,6 @@ pip install -e ".[dev]"
 | `src/vrag/retriever.py` | Local FAISS index construction and top-$k$ retrieval with `[Chunk_ID]` & page metadata | LAW 2, LAW 3 |
 | `src/vrag/generator.py` | Offline Ollama HTTP client (`http://localhost:11434`), bounded citation prompts, sequential `keep_alive=0` unload | LAW 2, LAW 3, LAW 4 |
 | `src/vrag/verifier.py` | `pysbd` sentence splitting, regex citation & entity check, `cross-encoder/nli-deberta-v3-small` pruning gate | LAW 1, LAW 2 |
-| `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), FActScore, `scipy.stats.ttest_rel` | LAW 3, LAW 4, LAW 5 |
-| `src/vrag/cli.py` | `typer` + `rich` CLI entrypoint for comparative tables & CSV export | LAW 5 |
+| `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), 4 core metrics, `scipy.stats.ttest_rel` | LAW 3, LAW 4, LAW 5 |
+| `src/vrag/cli.py` | CLI entrypoint for comparative tables & CSV/JSON export | LAW 5 |
+| `src/vrag/ui.py` | Lightweight Streamlit UI for uploading a student PDF and inspecting the 4 core comparative metrics & pruned claims | LAW 1, LAW 5 |
