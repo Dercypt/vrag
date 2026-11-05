@@ -28,6 +28,14 @@ class PipelineMode(str, Enum):
 
 
 @dataclass(frozen=True)
+class PDFPage:
+    """A single parsed page from an academic PDF document."""
+
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
 class Chunk:
     """A text segment extracted from an academic PDF."""
 
