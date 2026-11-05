@@ -151,3 +151,37 @@ class TrialTelemetry:
     peak_ram_mb: float
     output_summary: str
     claim_audit: tuple[ClaimVerificationResult, ...] = field(default_factory=tuple)
+
+    @property
+    def factual_precision_pct(self) -> float:
+        """Metric 1: Factual Precision (FActScore) in percentage (0-100%)."""
+        return self.atomic_factscore * 100.0
+
+    @property
+    def entailment_consistency_pct(self) -> float:
+        """Metric 2: Entailment Consistency (NLI Score) in percentage (0-100%)."""
+        return self.entailment_consistency * 100.0
+
+    @property
+    def citation_precision_pct(self) -> float:
+        """Citation Precision in percentage (0-100%)."""
+        return self.citation_precision * 100.0
+
+    @property
+    def citation_recall_pct(self) -> float:
+        """Citation Recall in percentage (0-100%)."""
+        return self.citation_recall * 100.0
+
+    @property
+    def citation_accuracy_pct(self) -> float:
+        """Metric 3: Citation Accuracy (F1 of Precision & Recall) in percentage (0-100%)."""
+        denom = self.citation_precision + self.citation_recall
+        if denom <= 0.0:
+            return 0.0
+        f1 = (2.0 * self.citation_precision * self.citation_recall) / denom
+        return f1 * 100.0
+
+    @property
+    def computational_latency_sec(self) -> float:
+        """Metric 4: End-to-end Computational Latency in seconds."""
+        return self.latencies.total_seconds

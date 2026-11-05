@@ -96,11 +96,17 @@ def test_comparative_evaluator_runs_paired_trial_and_exports_csv_json(tmp_path: 
     assert "FakeAuthor" not in trial_b.output_summary
 
     stats = compute_suite_statistics([pair_1, pair_2])
-    assert len(stats) == 5
-    factscore_stat = next(s for s in stats if s.metric_name == "Atomic FActScore")
-    assert factscore_stat.mean_baseline_a == 0.5
-    assert factscore_stat.mean_verified_b == 1.0
-    assert factscore_stat.mean_delta == 0.5
+    assert [s.metric_name for s in stats] == [
+        "Factual Precision (FActScore)",
+        "Entailment Consistency (NLI Score)",
+        "Citation Accuracy (Precision/Recall)",
+        "Computational Latency",
+    ]
+    assert [s.unit for s in stats] == ["%", "%", "%", "s"]
+    factscore_stat = stats[0]
+    assert factscore_stat.mean_baseline_a == 50.0
+    assert factscore_stat.mean_verified_b == 100.0
+    assert factscore_stat.mean_delta == 50.0
 
     csv_path = tmp_path / "telemetry.csv"
     json_path = tmp_path / "summary.json"
@@ -113,7 +119,8 @@ def test_comparative_evaluator_runs_paired_trial_and_exports_csv_json(tmp_path: 
     assert len(rows) == 4
     assert rows[0]["trial_id"] == "trial_01"
     assert rows[1]["mode"] == "condition_b_verified"
+    assert rows[1]["factual_precision_pct"] == "100.00"
 
     summary_data = json.loads(json_path.read_text(encoding="utf-8"))
     assert len(summary_data["trials"]) == 4
-    assert len(summary_data["statistical_tests"]) == 5
+    assert len(summary_data["statistical_tests"]) == 4

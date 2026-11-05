@@ -45,6 +45,7 @@ class PairedStatisticalResult:
     t_statistic: float
     t_pvalue: float
     wilcoxon_pvalue: float | None = None
+    unit: str = "%"
 
 
 def get_peak_ram_mb() -> float:
@@ -88,6 +89,7 @@ def run_paired_significance_test(
     metric_name: str,
     baseline_scores: list[float],
     verified_scores: list[float],
+    unit: str = "%",
 ) -> PairedStatisticalResult:
     """Enforce LAW 5: Compute paired t-test (scipy.stats.ttest_rel) & Wilcoxon p-value."""
     if len(baseline_scores) != len(verified_scores):
@@ -127,46 +129,46 @@ def run_paired_significance_test(
         t_statistic=t_stat,
         t_pvalue=t_pval,
         wilcoxon_pvalue=wilcoxon_pval,
+        unit=unit,
     )
 
 
 def compute_suite_statistics(
     paired_trials: list[tuple[TrialTelemetry, TrialTelemetry]],
 ) -> list[PairedStatisticalResult]:
-    """Compute paired statistical significance across all core metrics (LAW 5)."""
+    """Compute paired statistical significance across the 4 core thesis metrics (LAW 5)."""
     for trial_a, trial_b in paired_trials:
         verify_experimental_parity(trial_a, trial_b)
 
-    metrics = [
+    metrics: list[tuple[str, list[float], list[float], str]] = [
         (
-            "Atomic FActScore",
-            [p[0].atomic_factscore for p in paired_trials],
-            [p[1].atomic_factscore for p in paired_trials],
+            "Factual Precision (FActScore)",
+            [p[0].factual_precision_pct for p in paired_trials],
+            [p[1].factual_precision_pct for p in paired_trials],
+            "%",
         ),
         (
-            "Entailment Consistency",
-            [p[0].entailment_consistency for p in paired_trials],
-            [p[1].entailment_consistency for p in paired_trials],
+            "Entailment Consistency (NLI Score)",
+            [p[0].entailment_consistency_pct for p in paired_trials],
+            [p[1].entailment_consistency_pct for p in paired_trials],
+            "%",
         ),
         (
-            "Citation Precision",
-            [p[0].citation_precision for p in paired_trials],
-            [p[1].citation_precision for p in paired_trials],
+            "Citation Accuracy (Precision/Recall)",
+            [p[0].citation_accuracy_pct for p in paired_trials],
+            [p[1].citation_accuracy_pct for p in paired_trials],
+            "%",
         ),
         (
-            "Citation Recall",
-            [p[0].citation_recall for p in paired_trials],
-            [p[1].citation_recall for p in paired_trials],
-        ),
-        (
-            "Total Latency (s)",
-            [p[0].latencies.total_seconds for p in paired_trials],
-            [p[1].latencies.total_seconds for p in paired_trials],
+            "Computational Latency",
+            [p[0].computational_latency_sec for p in paired_trials],
+            [p[1].computational_latency_sec for p in paired_trials],
+            "s",
         ),
     ]
     return [
-        run_paired_significance_test(name, scores_a, scores_b)
-        for name, scores_a, scores_b in metrics
+        run_paired_significance_test(name, scores_a, scores_b, unit=unit)
+        for name, scores_a, scores_b, unit in metrics
     ]
 
 
@@ -345,6 +347,9 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
         "t_generate",
         "t_verify",
         "total_seconds",
+        "factual_precision_pct",
+        "entailment_consistency_pct",
+        "citation_accuracy_pct",
         "atomic_factscore",
         "entailment_consistency",
         "citation_precision",
@@ -370,6 +375,9 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
                     "t_generate": f"{t.latencies.t_generate:.6f}",
                     "t_verify": f"{t.latencies.t_verify:.6f}",
                     "total_seconds": f"{t.latencies.total_seconds:.6f}",
+                    "factual_precision_pct": f"{t.factual_precision_pct:.2f}",
+                    "entailment_consistency_pct": f"{t.entailment_consistency_pct:.2f}",
+                    "citation_accuracy_pct": f"{t.citation_accuracy_pct:.2f}",
                     "atomic_factscore": f"{t.atomic_factscore:.4f}",
                     "entailment_consistency": f"{t.entailment_consistency:.4f}",
                     "citation_precision": f"{t.citation_precision:.4f}",

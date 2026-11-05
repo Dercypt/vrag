@@ -11,10 +11,10 @@ def test_run_synthetic_demo_benchmark_executes_all_models_and_writes_artifacts(
     tmp_path: Path,
 ) -> None:
     stats = run_synthetic_demo_benchmark(output_dir=tmp_path)
-    assert len(stats) == 5
+    assert len(stats) == 4
 
     table = render_comparison_table(stats)
-    assert table.row_count == 5
+    assert table.row_count == 4
 
     assert (tmp_path / "telemetry.csv").exists()
     assert (tmp_path / "summary.json").exists()
