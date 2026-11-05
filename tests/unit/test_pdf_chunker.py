@@ -34,6 +34,38 @@ def test_extract_pdf_pages_missing_fitz_raises_descriptive_error(
         extract_pdf_pages(b"%PDF-1.4 dummy header")
 
 
+def test_extract_pdf_pages_with_fitz_parses_real_pdf(tmp_path: pytest.TempPathFactory) -> None:
+    import fitz
+
+    doc = fitz.open()
+    page1 = doc.new_page()
+    page1.insert_text((72, 72), "First page academic thesis text.")
+    page2 = doc.new_page()
+    page2.insert_text((72, 72), "Second page evaluation findings.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    # Test raw bytes
+    pages_from_bytes = extract_pdf_pages(pdf_bytes)
+    assert len(pages_from_bytes) == 2
+    assert pages_from_bytes[0].page_number == 1
+    assert "First page academic thesis text." in pages_from_bytes[0].text
+    assert pages_from_bytes[1].page_number == 2
+    assert "Second page evaluation findings." in pages_from_bytes[1].text
+
+    # Test file path input
+    test_pdf_file = tmp_path / "sample.pdf"  # type: ignore[operator]
+    test_pdf_file.write_bytes(pdf_bytes)
+    pages_from_path = extract_pdf_pages(test_pdf_file)
+    assert len(pages_from_path) == 2
+    assert pages_from_path[0].text == pages_from_bytes[0].text
+
+
+def test_extract_pdf_pages_handles_corrupt_pdf_bytes() -> None:
+    with pytest.raises(ValueError, match="Failed to parse corrupt PDF document"):
+        extract_pdf_pages(b"%PDF-corrupted-stream-garbage-bytes")
+
+
 def test_extract_pdf_pages_from_formfeed_bytes_preserves_page_numbers() -> None:
     raw_doc = b"Page one introduction text.\fPage two methodology text.\f   \fPage four results."
     pages = extract_pdf_pages(raw_doc)
