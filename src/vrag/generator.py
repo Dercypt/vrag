@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
 from vrag.models import APPROVED_MODELS, PipelineMode, RetrievedPassage
 
 ALLOWED_LOCAL_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
+
+HttpPostFn = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
 def validate_offline_ollama_url(base_url: str) -> str:
@@ -19,6 +23,18 @@ def validate_offline_ollama_url(base_url: str) -> str:
             "Only localhost / 127.0.0.1 is permitted for offline execution."
         )
     return base_url.rstrip("/")
+
+
+def _default_http_post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Send synchronous JSON POST to local Ollama daemon."""
+    validate_offline_ollama_url(url)
+    import httpx
+
+    with httpx.Client(timeout=180.0, trust_env=False) as client:
+        resp = client.post(url, json=payload)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        return data
 
 
 def build_rag_prompt(
@@ -56,10 +72,12 @@ class OllamaGenerator:
         base_url: str = "http://localhost:11434",
         seed: int = 42,
         temperature: float = 0.0,
+        http_post_fn: HttpPostFn | None = None,
     ) -> None:
         self.base_url = validate_offline_ollama_url(base_url)
         self.seed = seed
         self.temperature = temperature
+        self._http_post_fn = http_post_fn
         self.active_model: str | None = None
         self.unload_history: list[str] = []
 
@@ -72,7 +90,35 @@ class OllamaGenerator:
         self.active_model = target_model
 
     def unload_model(self, model_name: str) -> None:
-        """Record model unload (keep_alive=0) to free RAM on the 2019 MacBook Pro."""
+        """Send keep_alive=0 to free RAM on the 2019 MacBook Pro (LAW 4)."""
         self.unload_history.append(model_name)
+        if self._http_post_fn is not None:
+            self._http_post_fn(
+                f"{self.base_url}/api/generate",
+                {"model": model_name, "prompt": "", "keep_alive": 0, "stream": False},
+            )
         if self.active_model == model_name:
             self.active_model = None
+
+    def generate(
+        self,
+        model_name: str,
+        query: str,
+        passages: list[RetrievedPassage],
+        mode: PipelineMode,
+    ) -> str:
+        """Generate a RAG summary from local Ollama using deterministic seed & temperature."""
+        self.ensure_single_model_loaded(model_name)
+        prompt = build_rag_prompt(query=query, passages=passages, mode=mode)
+        post_fn = self._http_post_fn or _default_http_post
+        payload: dict[str, Any] = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "seed": self.seed,
+            },
+        }
+        result = post_fn(f"{self.base_url}/api/generate", payload)
+        return str(result.get("response", "")).strip()
