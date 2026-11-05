@@ -35,8 +35,11 @@ To guarantee reproducible isolated execution on macOS without polluting system p
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -e ".[dev]"
+pip install -e ".[dev,ui]"
 ```
+
+> [!NOTE]
+> PyMuPDF is imported via `import fitz`. It is part of the approved thesis stack in `pyproject.toml` (`pymupdf>=1.23.0`) for offline PDF ingestion (LAW 2). Ensure `pymupdf` is installed in your active environment.
 
 ---
 

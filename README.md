@@ -31,22 +31,29 @@
 
 ## Quickstart
 
-### 1. Run Verification Suite
+### 1. Environment Setup
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,ui]"
+```
+
+### 2. Run Verification Suite
 ```bash
 ./verify.sh
 ```
 
-### 2. Launch Lightweight Student PDF Benchmark UI (Streamlit)
+### 3. Launch Lightweight Student PDF Benchmark UI (Streamlit)
 ```bash
 PYTHONPATH=src streamlit run src/vrag/ui.py
 ```
 
-### 3. Run Deterministic Offline CLI Benchmark Demo
+### 4. Run Deterministic Offline CLI Benchmark Demo
 ```bash
 PYTHONPATH=src python3 -m vrag.cli --demo --output-dir outputs/demo
 ```
 
-### 4. Benchmark a Local Student/Academic PDF via CLI
+### 5. Benchmark a Local Student/Academic PDF via CLI
 ```bash
 PYTHONPATH=src python3 -m vrag.cli --pdf path/to/student_paper.pdf --output-dir outputs/run1
 ```
