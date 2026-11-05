@@ -25,6 +25,19 @@ def validate_offline_ollama_url(base_url: str) -> str:
     return base_url.rstrip("/")
 
 
+def check_ollama_status(base_url: str = "http://localhost:11434", timeout: float = 1.5) -> bool:
+    """Enforce LAW 2 and check whether the local Ollama daemon is reachable."""
+    clean_url = validate_offline_ollama_url(base_url)
+    try:
+        import httpx
+
+        with httpx.Client(timeout=timeout, trust_env=False) as client:
+            resp = client.get(f"{clean_url}/api/tags")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def _default_http_post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Send synchronous JSON POST to local Ollama daemon."""
     validate_offline_ollama_url(url)

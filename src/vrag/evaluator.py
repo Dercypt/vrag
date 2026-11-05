@@ -18,10 +18,14 @@ from vrag.chunker import (
     chunk_pages_fixed,
     chunk_pages_semantic,
     extract_pdf_pages,
+    split_sentences,
 )
 from vrag.generator import OllamaGenerator
 from vrag.models import (
     APPROVED_MODELS,
+    DEFAULT_STUDENT_BENCHMARK_PROMPTS,
+    NLILabel,
+    NLIScore,
     PipelineMode,
     StageLatencies,
     TrialTelemetry,
@@ -406,3 +410,89 @@ def export_summary_json(
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def _build_simulation_evaluator() -> ComparativeEvaluator:
+    """Create a deterministic offline evaluator grounded on the uploaded PDF's actual sentences."""
+    import re
+
+    def sim_embed(texts: list[str]) -> list[list[float]]:
+        vecs: list[list[float]] = []
+        for idx, t in enumerate(texts):
+            length_feat = float((len(t) % 17) + 1)
+            word_feat = float((len(t.split()) % 13) + 1)
+            vecs.append([length_feat, word_feat + (0.01 * idx)])
+        return vecs
+
+    def sim_http_post(_url: str, payload: dict[str, object]) -> dict[str, object]:
+        if payload.get("keep_alive") == 0:
+            return {"done": True}
+        prompt = str(payload.get("prompt", ""))
+        # Extract the first chunk text and ID from the bounded prompt context
+        match = re.search(r"\[(C\d+)\]\s*\(Page\s*\d+\):\s*(.+)", prompt)
+        chunk_id = match.group(1) if match else "C1"
+        raw_context = match.group(2) if match else "The study evaluates RAG pipelines."
+        first_sent = (
+            split_sentences(raw_context)[0] if split_sentences(raw_context) else raw_context
+        )
+
+        if "VERIFIABLE SUMMARY:" in prompt:
+            return {
+                "response": (
+                    f"{first_sent} [{chunk_id}]. "
+                    f"According to (FabricatedAuthor, 2025), unverified speculative claims "
+                    f"replace empirical grounding [{chunk_id}]."
+                )
+            }
+        return {
+            "response": (
+                f"{first_sent} "
+                "Furthermore, unverified speculative claims replace empirical grounding "
+                "without any source support."
+            )
+        }
+
+    def sim_nli(_premise: str, hypothesis: str) -> NLIScore:
+        if "unverified speculative claims" in hypothesis.lower():
+            return NLIScore(
+                label=NLILabel.CONTRADICTION,
+                entailment_prob=0.04,
+                contradiction_prob=0.92,
+                neutral_prob=0.04,
+            )
+        return NLIScore(
+            label=NLILabel.ENTAILMENT,
+            entailment_prob=0.95,
+            contradiction_prob=0.02,
+            neutral_prob=0.03,
+        )
+
+    return ComparativeEvaluator(
+        generator=OllamaGenerator(http_post_fn=sim_http_post),
+        embed_fn=sim_embed,
+        nli_scorer=sim_nli,
+    )
+
+
+def run_student_pdf_benchmark(
+    pdf_bytes: bytes,
+    pdf_name: str = "student_paper",
+    prompts: tuple[tuple[str, str], ...] = DEFAULT_STUDENT_BENCHMARK_PROMPTS,
+    models: tuple[str, ...] = APPROVED_MODELS,
+    top_k: int = 3,
+    simulation_mode: bool = False,
+) -> tuple[list[tuple[TrialTelemetry, TrialTelemetry]], list[PairedStatisticalResult]]:
+    """Run the standardized multi-prompt benchmark suite on an uploaded student PDF."""
+    evaluator = _build_simulation_evaluator() if simulation_mode else ComparativeEvaluator()
+    clean_stem = Path(pdf_name).stem or "student_paper"
+    documents = [
+        (f"{clean_stem}_{prompt_key}", pdf_bytes, prompt_text)
+        for prompt_key, prompt_text in prompts
+    ]
+    pairs = evaluator.run_sequential_model_sweep(
+        documents=documents,
+        models=models,
+        top_k=top_k,
+    )
+    stats = compute_suite_statistics(pairs)
+    return pairs, stats

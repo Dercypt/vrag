@@ -11,6 +11,25 @@ APPROVED_MODELS: tuple[str, ...] = (
     "qwen2.5:7b-instruct-q4_K_M",
 )
 
+DEFAULT_STUDENT_BENCHMARK_PROMPTS: tuple[tuple[str, str], ...] = (
+    (
+        "contributions",
+        "Summarize the core research problem and primary contributions of this paper.",
+    ),
+    (
+        "methodology",
+        "Describe the proposed methodology, pipeline architecture, and algorithms.",
+    ),
+    (
+        "findings",
+        "Summarize the experimental evaluation metrics, empirical results, and key findings.",
+    ),
+    (
+        "limitations",
+        "Identify the stated limitations, hardware constraints, and future work.",
+    ),
+)
+
 
 class NLILabel(str, Enum):
     """Natural Language Inference classification label."""
