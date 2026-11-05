@@ -9,7 +9,7 @@
 An agent MUST pause and ask for explicit approval before making any of the following changes:
 
 1. **Dependencies & Stack**:
-   - Adding, removing, or replacing any third-party package in `pyproject.toml` beyond the approved thesis stack (`pymupdf`, `pysbd`, `sentence-transformers`, `faiss-cpu`, `scipy`, `numpy`, `typer`, `rich`, `httpx`, `psutil`, `pytest`, `ruff`).
+   - Adding, removing, or replacing any third-party package in `pyproject.toml` beyond the approved thesis stack (`pymupdf`, `pysbd`, `sentence-transformers`, `faiss-cpu`, `scipy`, `numpy`, `typer`, `rich`, `httpx`, `psutil`, `streamlit`, `pytest`, `ruff`).
 2. **Experimental Constants & Thresholds**:
    - Altering default experimental parameters:
      - Baseline chunk size (`token_size = 256`)

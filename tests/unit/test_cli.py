@@ -4,17 +4,39 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vrag.cli import main, render_comparison_table, run_synthetic_demo_benchmark
+from rich.console import Console
+
+from vrag.cli import (
+    format_metric_value,
+    main,
+    render_comparison_table,
+    run_synthetic_demo_benchmark,
+)
+
+
+def test_format_metric_value_formats_percentage_and_seconds() -> None:
+    assert format_metric_value(92.5, "%") == "92.50%"
+    assert format_metric_value(1.23456, "s") == "1.2346s"
+    assert format_metric_value(15.0, "%", signed=True) == "+15.00%"
+    assert format_metric_value(-0.05, "s", signed=True) == "-0.0500s"
 
 
 def test_run_synthetic_demo_benchmark_executes_all_models_and_writes_artifacts(
     tmp_path: Path,
 ) -> None:
     stats = run_synthetic_demo_benchmark(output_dir=tmp_path)
-    assert len(stats) == 5
+    assert len(stats) == 4
 
     table = render_comparison_table(stats)
-    assert table.row_count == 5
+    assert table.row_count == 4
+    console = Console(record=True, width=120)
+    console.print(table)
+    rendered_text = console.export_text()
+    assert "Factual Precision (FActScore)" in rendered_text
+    assert "Entailment Consistency (NLI Score)" in rendered_text
+    assert "Citation Accuracy (Precision/Recall)" in rendered_text
+    assert "Computational Latency" in rendered_text
+    assert "%" in rendered_text
 
     assert (tmp_path / "telemetry.csv").exists()
     assert (tmp_path / "summary.json").exists()
