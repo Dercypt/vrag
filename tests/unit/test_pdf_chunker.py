@@ -95,9 +95,15 @@ def test_chunk_pages_semantic_assigns_global_chunk_ids_across_pages() -> None:
     ]
 
     def fake_embed(sents: list[str]) -> list[list[float]]:
-        if len(sents) == 2 and "First" in sents[0]:
-            return [[1.0, 0.0], [0.0, 1.0]]
-        return [[1.0, 0.0], [0.99, 0.01]]
+        out: list[list[float]] = []
+        for s in sents:
+            if "First" in s:
+                out.append([1.0, 0.0, 0.0])
+            elif "Second" in s:
+                out.append([0.0, 1.0, 0.0])
+            else:
+                out.append([0.0, 0.0, 1.0])
+        return out
 
     chunks = chunk_pages_semantic(pages, similarity_threshold=0.75, embed_fn=fake_embed)
     assert [(c.chunk_id, c.page_number) for c in chunks] == [
@@ -106,6 +112,32 @@ def test_chunk_pages_semantic_assigns_global_chunk_ids_across_pages() -> None:
         ("C3", 2),
     ]
     assert "Page two sentence A. Page two similar sentence B." == chunks[2].text
+
+
+def test_chunk_pages_semantic_preserves_coherent_thought_across_page_boundary() -> None:
+    pages = [
+        PDFPage(page_number=1, text="Smith (2023) proved that X increases Y under low pressure."),
+        PDFPage(
+            page_number=2,
+            text=(
+                "However, when temperature rises, X rapidly degrades. "
+                "Unrelated fiscal policy shifts macroeconomic baselines."
+            ),
+        ),
+    ]
+
+    def fake_embed(sents: list[str]) -> list[list[float]]:
+        return [[0.0, 1.0] if "fiscal policy" in s else [1.0, 0.0] for s in sents]
+
+    chunks = chunk_pages_semantic(pages, similarity_threshold=0.75, embed_fn=fake_embed)
+    assert len(chunks) == 2
+    assert chunks[0].chunk_id == "C1"
+    assert chunks[0].page_number == 1
+    assert "Smith (2023)" in chunks[0].text
+    assert "rapidly degrades" in chunks[0].text
+    assert chunks[1].chunk_id == "C2"
+    assert chunks[1].page_number == 2
+    assert "fiscal policy" in chunks[1].text
 
 
 def test_chunker_validation_edge_cases() -> None:

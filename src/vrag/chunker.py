@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import functools
 import math
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from vrag.models import Chunk, PDFPage
 
 EmbedderFn = Callable[[list[str]], list[list[float]]]
+
+
+@functools.lru_cache(maxsize=1)
+def get_cached_minilm_model(cls: Any) -> Any:
+    """Cache all-MiniLM-L6-v2 singleton on CPU per PRINCIPLES.md."""
+    return cls("all-MiniLM-L6-v2", device="cpu")
 
 
 def extract_pdf_pages(source: bytes | str | Path) -> list[PDFPage]:
@@ -127,7 +135,7 @@ def semantic_cosine_chunk(
                 "or pass an injectable embed_fn / use Simulation Mode)."
             ) from err
 
-        model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+        model = get_cached_minilm_model(SentenceTransformer)
         raw_embeddings = model.encode(sentences, convert_to_numpy=True)
         embeddings: list[list[float]] = [row.tolist() for row in raw_embeddings]
     else:
@@ -177,16 +185,79 @@ def chunk_pages_semantic(
     pages: list[PDFPage],
     similarity_threshold: float = 0.75,
     embed_fn: EmbedderFn | None = None,
+    cross_page: bool = True,
 ) -> list[Chunk]:
-    """Chunk a list of PDFPages using Condition B sentence-level semantic cosine chunking."""
-    all_chunks: list[Chunk] = []
+    """Chunk PDFPages using Condition B sentence-level semantic cosine chunking."""
+    if not (0.0 < similarity_threshold <= 1.0):
+        raise ValueError("similarity_threshold must be in (0.0, 1.0]")
+
+    if not cross_page:
+        all_chunks: list[Chunk] = []
+        for page in pages:
+            page_chunks = semantic_cosine_chunk(
+                pdf_text=page.text,
+                similarity_threshold=similarity_threshold,
+                page_number=page.page_number,
+                embed_fn=embed_fn,
+                start_index=len(all_chunks) + 1,
+            )
+            all_chunks.extend(page_chunks)
+        return all_chunks
+
+    tagged_sentences: list[tuple[int, str]] = []
     for page in pages:
-        page_chunks = semantic_cosine_chunk(
-            pdf_text=page.text,
-            similarity_threshold=similarity_threshold,
-            page_number=page.page_number,
-            embed_fn=embed_fn,
-            start_index=len(all_chunks) + 1,
+        for sent in split_sentences(page.text):
+            tagged_sentences.append((page.page_number, sent))
+
+    if not tagged_sentences:
+        return []
+
+    raw_sentences = [s for _, s in tagged_sentences]
+    if embed_fn is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as err:
+            raise ImportError(
+                f"Failed to import sentence-transformers / transformers: {err}. "
+                "Ensure tokenizers and transformers versions are compatible "
+                "(e.g., pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0' "
+                "or pass an injectable embed_fn / use Simulation Mode)."
+            ) from err
+
+        model = get_cached_minilm_model(SentenceTransformer)
+        raw_embeddings = model.encode(raw_sentences, convert_to_numpy=True)
+        embeddings = [row.tolist() for row in raw_embeddings]
+    else:
+        embeddings = embed_fn(raw_sentences)
+
+    chunks: list[Chunk] = []
+    current_group = [tagged_sentences[0][1]]
+    current_page = tagged_sentences[0][0]
+
+    for idx in range(1, len(tagged_sentences)):
+        sim = _cosine_similarity(embeddings[idx - 1], embeddings[idx])
+        if sim >= similarity_threshold:
+            current_group.append(tagged_sentences[idx][1])
+        else:
+            chunk_id = f"C{len(chunks) + 1}"
+            chunks.append(
+                Chunk(
+                    chunk_id=chunk_id,
+                    text=" ".join(current_group),
+                    page_number=current_page,
+                )
+            )
+            current_group = [tagged_sentences[idx][1]]
+            current_page = tagged_sentences[idx][0]
+
+    if current_group:
+        chunk_id = f"C{len(chunks) + 1}"
+        chunks.append(
+            Chunk(
+                chunk_id=chunk_id,
+                text=" ".join(current_group),
+                page_number=current_page,
+            )
         )
-        all_chunks.extend(page_chunks)
-    return all_chunks
+
+    return chunks
