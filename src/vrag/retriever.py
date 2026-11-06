@@ -44,7 +44,15 @@ class LocalVectorRetriever:
     def _encode(self, texts: list[str]) -> list[list[float]]:
         if self._embed_fn is not None:
             return self._embed_fn(texts)
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as err:
+            raise ImportError(
+                f"Failed to import sentence-transformers / transformers: {err}. "
+                "Ensure tokenizers and transformers versions are compatible "
+                "(e.g., pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0' "
+                "or pass an injectable embed_fn / use Simulation Mode)."
+            ) from err
 
         model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
         arr = model.encode(texts, convert_to_numpy=True)

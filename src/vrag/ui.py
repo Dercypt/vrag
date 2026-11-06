@@ -143,6 +143,39 @@ def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def execute_benchmark_safely(
+    pdf_bytes: bytes,
+    pdf_name: str,
+    prompts: tuple[tuple[str, str], ...],
+    models: tuple[str, ...],
+    simulation_mode: bool,
+) -> tuple[
+    list[tuple[TrialTelemetry, TrialTelemetry]] | None,
+    list[PairedStatisticalResult] | None,
+    str | None,
+]:
+    """Execute student PDF benchmark with robust exception catching and diagnostic message."""
+    try:
+        pairs, stats = run_student_pdf_benchmark(
+            pdf_bytes=pdf_bytes,
+            pdf_name=pdf_name,
+            prompts=prompts,
+            models=models,
+            simulation_mode=simulation_mode,
+        )
+        return pairs, stats, None
+    except Exception as err:
+        return (
+            None,
+            None,
+            (
+                f"Benchmark execution encountered an error: {err}\n\n"
+                "Tip: If Ollama is unreachable or model weights encounter environment mismatches, "
+                "check 'Use Deterministic Simulation Mode (Fast Offline)' in the sidebar."
+            ),
+        )
+
+
 def render_streamlit_app() -> None:  # pragma: no cover
     """Render the minimal Streamlit comparative benchmark UI."""
     import streamlit as st
@@ -212,13 +245,17 @@ def render_streamlit_app() -> None:  # pragma: no cover
         prompts = DEFAULT_STUDENT_BENCHMARK_PROMPTS
 
     with st.spinner("Running sequential Condition A vs. Condition B benchmark..."):
-        pairs, stats = run_student_pdf_benchmark(
+        pairs, stats, error_msg = execute_benchmark_safely(
             pdf_bytes=pdf_bytes,
             pdf_name=pdf_name,
             prompts=prompts,
             models=models_tuple,
             simulation_mode=sim_mode,
         )
+
+    if error_msg or pairs is None or stats is None:
+        st.error(error_msg or "Benchmark execution failed.")
+        return
 
     st.subheader("1. Core 4-Metric Comparative Results (Base RAG vs. Verification-Driven RAG)")
     cols = st.columns(4)

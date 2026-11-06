@@ -117,7 +117,15 @@ def semantic_cosine_chunk(
         return []
 
     if embed_fn is None:
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as err:
+            raise ImportError(
+                f"Failed to import sentence-transformers / transformers: {err}. "
+                "Ensure tokenizers and transformers versions are compatible "
+                "(e.g., pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0' "
+                "or pass an injectable embed_fn / use Simulation Mode)."
+            ) from err
 
         model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
         raw_embeddings = model.encode(sentences, convert_to_numpy=True)

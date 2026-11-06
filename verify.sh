@@ -21,6 +21,10 @@ if ! "$PYTHON_BIN" -c "import fitz" >/dev/null 2>&1; then
     echo "Notice: PyMuPDF ('fitz') not detected in ${PYTHON_BIN}. Run: ${PYTHON_BIN} -m pip install pymupdf" >&2
 fi
 
+if ! "$PYTHON_BIN" -c "from sentence_transformers import SentenceTransformer, CrossEncoder" >/dev/null 2>&1; then
+    echo "Notice: sentence-transformers dependency conflict detected in ${PYTHON_BIN}. Run: ${PYTHON_BIN} -m pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0'" >&2
+fi
+
 echo "============================================================"
 echo " [vrag] Stage 1/4: Ruff Lint Check"
 echo "============================================================"
