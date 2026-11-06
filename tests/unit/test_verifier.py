@@ -8,7 +8,9 @@ from vrag.models import Chunk, NLILabel, NLIScore
 from vrag.verifier import (
     evaluate_unverified_summary,
     extract_author_surnames,
+    extract_author_year_citations,
     extract_chunk_ids,
+    split_atomic_claims,
     verify_and_prune_summary,
 )
 
@@ -20,6 +22,25 @@ def test_extract_chunk_ids_and_author_surnames_handles_compound_citations() -> N
     )
     assert extract_chunk_ids(sentence) == ("C1", "C2")
     assert extract_author_surnames(sentence) == ("Smith", "Jones", "Vaswani")
+    assert extract_author_year_citations(sentence) == (
+        ("Smith", "2021"),
+        ("Jones", "2021"),
+        ("Vaswani", "2017"),
+    )
+
+
+def test_extract_narrative_and_semicolon_citations_and_atomic_decomposition() -> None:
+    narrative = (
+        "Quitaleg and Ramos (2025) evaluated 120 modules [C1]; "
+        "Paningbatan (2024) claimed cloud GPUs eliminate errors [C1]."
+    )
+    claims = split_atomic_claims(narrative)
+    assert len(claims) == 2
+    assert extract_author_year_citations(claims[0]) == (("Quitaleg", "2025"), ("Ramos", "2025"))
+    assert extract_author_year_citations(claims[1]) == (("Paningbatan", "2024"),)
+
+    multi_paren = "Recent surveys (Chuang et al., 2024; Tam et al., 2023) confirm drift [C1]."
+    assert extract_author_year_citations(multi_paren) == (("Chuang", "2024"), ("Tam", "2023"))
 
 
 def test_evaluate_unverified_summary_records_false_positives_for_condition_a() -> None:
