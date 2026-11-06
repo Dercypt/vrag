@@ -14,6 +14,7 @@ import warnings
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from vrag.chunker import (
     EmbedderFn,
@@ -248,6 +249,17 @@ class ComparativeEvaluator:
         self.token_size = token_size
         self.similarity_threshold = similarity_threshold
         self.entailment_threshold = entailment_threshold
+
+    def close(self) -> None:
+        """Clean up resources including the persistent generator client."""
+        if hasattr(self.generator, "close"):
+            self.generator.close()
+
+    def __enter__(self) -> ComparativeEvaluator:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     def run_paired_trial(
         self,
@@ -573,15 +585,18 @@ def run_student_pdf_benchmark(
 ) -> tuple[list[tuple[TrialTelemetry, TrialTelemetry]], list[PairedStatisticalResult]]:
     """Run the standardized multi-prompt benchmark suite on an uploaded student PDF."""
     evaluator = _build_simulation_evaluator() if simulation_mode else ComparativeEvaluator()
-    clean_stem = Path(pdf_name).stem or "student_paper"
-    documents = [
-        (f"{clean_stem}_{prompt_key}", pdf_bytes, prompt_text)
-        for prompt_key, prompt_text in prompts
-    ]
-    pairs = evaluator.run_sequential_model_sweep(
-        documents=documents,
-        models=models,
-        top_k=top_k,
-    )
-    stats = compute_suite_statistics(pairs)
-    return pairs, stats
+    try:
+        clean_stem = Path(pdf_name).stem or "student_paper"
+        documents = [
+            (f"{clean_stem}_{prompt_key}", pdf_bytes, prompt_text)
+            for prompt_key, prompt_text in prompts
+        ]
+        pairs = evaluator.run_sequential_model_sweep(
+            documents=documents,
+            models=models,
+            top_k=top_k,
+        )
+        stats = compute_suite_statistics(pairs)
+        return pairs, stats
+    finally:
+        evaluator.close()

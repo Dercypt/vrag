@@ -130,3 +130,14 @@ def test_comparative_evaluator_runs_paired_trial_and_exports_csv_json(tmp_path: 
     summary_data = json.loads(json_path.read_text(encoding="utf-8"))
     assert len(summary_data["trials"]) == 4
     assert len(summary_data["statistical_tests"]) == 4
+
+
+def test_comparative_evaluator_context_manager_closes_generator() -> None:
+    evaluator = ComparativeEvaluator()
+    client = evaluator.generator.get_client()
+    assert not client.is_closed
+
+    with evaluator:
+        assert not client.is_closed
+
+    assert client.is_closed
