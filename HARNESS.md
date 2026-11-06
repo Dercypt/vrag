@@ -45,8 +45,9 @@ pip install -e ".[dev,ui]"
 ### Offline Execution & Internet Connectivity
 
 The entire system is designed for **100% offline execution** (LAW 2):
-- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet.
+- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet. Features proactive daemon status indicators (`🟢 Online` / `⚠️ Offline`).
 - **Deterministic Simulation Mode (Fast Offline)**: Runs completely without internet or external model downloads, using purely local hash embeddings and mock verification.
+- **Automatic Fallback on Connection Refusal**: If local Ollama is offline or returns `[Errno 61] Connection refused` while running the benchmark, execution automatically falls back to Deterministic Simulation Mode with a diagnostic notice rather than aborting.
 - **Live Ollama + Local HF Mode**: Once Ollama models are pulled and HuggingFace weights (`all-MiniLM-L6-v2`, `cross-encoder/nli-deberta-v3-small`) are cached in `~/.cache/huggingface`, execution runs 100% locally on CPU/loopback with zero internet connectivity.
 
 ---
