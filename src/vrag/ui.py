@@ -143,6 +143,33 @@ def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def is_connection_refused_error(err: Exception) -> bool:
+    """Return True if exception indicates unreachable local Ollama daemon or connection refusal."""
+    import errno
+
+    if isinstance(err, (ConnectionRefusedError, ConnectionResetError)):
+        return True
+    if isinstance(err, OSError) and err.errno in (errno.ECONNREFUSED, errno.ECONNRESET):
+        return True
+
+    err_type_name = type(err).__name__
+    if "ConnectError" in err_type_name or "ConnectTimeout" in err_type_name:
+        return True
+
+    cause = getattr(err, "__cause__", None) or getattr(err, "__context__", None)
+    if cause is not None and isinstance(cause, Exception) and is_connection_refused_error(cause):
+        return True
+
+    msg = str(err).lower()
+    return (
+        "connection refused" in msg
+        or "errno 61" in msg
+        or "errno 111" in msg
+        or "failed to establish a new connection" in msg
+        or "all connection attempts failed" in msg
+    )
+
+
 def execute_benchmark_safely(
     pdf_bytes: bytes,
     pdf_name: str,

@@ -10,6 +10,7 @@ from vrag.ui import (
     build_four_metrics_summary_rows,
     build_trial_comparison_rows,
     execute_benchmark_safely,
+    is_connection_refused_error,
 )
 
 
@@ -94,3 +95,32 @@ def test_execute_benchmark_safely_success_and_error_handling(
     assert error_msg is not None
     assert "Benchmark execution encountered an error" in error_msg
     assert "Use Deterministic Simulation Mode (Fast Offline)" in error_msg
+
+
+def test_is_connection_refused_error() -> None:
+    import errno
+
+    assert is_connection_refused_error(ConnectionRefusedError("Connection refused"))
+    assert is_connection_refused_error(ConnectionResetError("Connection reset by peer"))
+    assert is_connection_refused_error(OSError(errno.ECONNREFUSED, "Connection refused"))
+    assert is_connection_refused_error(RuntimeError("[Errno 61] Connection refused"))
+    assert is_connection_refused_error(RuntimeError("Failed to establish a new connection"))
+
+    class FakeConnectError(Exception):
+        pass
+
+    assert is_connection_refused_error(FakeConnectError("Cannot reach localhost:11434"))
+
+    # Nested exceptions
+    try:
+        try:
+            raise ConnectionRefusedError("nested connection refused")
+        except ConnectionRefusedError as orig:
+            raise RuntimeError("Wrapper error") from orig
+    except RuntimeError as wrapped:
+        assert is_connection_refused_error(wrapped)
+
+    # Negative cases
+    assert not is_connection_refused_error(ValueError("Invalid token size"))
+    assert not is_connection_refused_error(ImportError("Missing module"))
+    assert not is_connection_refused_error(KeyError("missing_key"))
