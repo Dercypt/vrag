@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    import httpx
 
 from vrag.models import APPROVED_MODELS, PipelineMode, RetrievedPassage
 
@@ -189,13 +192,61 @@ class OllamaGenerator:
         seed: int = 42,
         temperature: float = 0.0,
         http_post_fn: HttpPostFn | None = None,
+        client: httpx.Client | None = None,
+        timeout: float = 180.0,
+        connect_timeout: float = 5.0,
     ) -> None:
         self.base_url = validate_offline_ollama_url(base_url)
         self.seed = seed
         self.temperature = temperature
         self._http_post_fn = http_post_fn
+        self._timeout = timeout
+        self._connect_timeout = connect_timeout
+        self._client = client
+        self._owns_client = client is None
         self.active_model: str | None = None
         self.unload_history: list[str] = []
+
+    def get_client(self) -> httpx.Client:
+        """Return or lazily initialize the persistent httpx.Client with connection pooling."""
+        if self._client is None or getattr(self._client, "is_closed", False):
+            import httpx
+
+            transport = httpx.HTTPTransport(
+                retries=3,
+                limits=httpx.Limits(
+                    max_keepalive_connections=10,
+                    max_connections=20,
+                    keepalive_expiry=120.0,
+                ),
+            )
+            client_timeout = httpx.Timeout(self._timeout, connect=self._connect_timeout)
+            self._client = httpx.Client(
+                base_url=self.base_url,
+                timeout=client_timeout,
+                transport=transport,
+                trust_env=False,
+            )
+            self._owns_client = True
+        return self._client
+
+    def close(self) -> None:
+        """Close the persistent HTTP client session if owned by this instance."""
+        if self._client is not None and not getattr(self._client, "is_closed", False):
+            if self._owns_client:
+                self._client.close()
+
+    def __enter__(self) -> OllamaGenerator:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def ensure_single_model_loaded(self, target_model: str) -> None:
         """Enforce LAW 4: Unload any previously active model before loading a new one."""

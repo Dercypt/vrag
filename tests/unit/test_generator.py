@@ -86,3 +86,30 @@ def test_ollama_generator_rejects_unapproved_model() -> None:
     gen = OllamaGenerator(http_post_fn=lambda _u, _p: {"response": "ok"})
     with pytest.raises(ValueError, match="not in APPROVED_MODELS"):
         gen.ensure_single_model_loaded("gpt-4o-mini")
+
+
+def test_ollama_generator_persistent_session_and_context_manager() -> None:
+    gen = OllamaGenerator(base_url="http://127.0.0.1:11434")
+    client1 = gen.get_client()
+    assert client1 is not None
+    assert gen.get_client() is client1  # Reuses same client instance (connection pooling)
+
+    with gen:
+        assert not client1.is_closed
+
+    assert client1.is_closed
+
+
+def test_ollama_generator_client_configuration_limits_and_timeout() -> None:
+    gen = OllamaGenerator(
+        base_url="http://127.0.0.1:11434",
+        timeout=120.0,
+        connect_timeout=4.0,
+    )
+    client = gen.get_client()
+    try:
+        assert client.timeout.connect == 4.0
+        assert client.timeout.read == 120.0
+    finally:
+        gen.close()
+    assert client.is_closed
