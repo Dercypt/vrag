@@ -29,7 +29,8 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
         "Percentage of generated claims actually supported by the uploaded PDF (%)."
     ),
     "Entailment Consistency (NLI Score)": (
-        "Accuracy of classifying sentences as supported vs. hallucinated (TP vs. FP) (%)."
+        "Classification accuracy across retained and pruned claims: "
+        "(TP + TN) / (TP + TN + FP + FN) (%)."
     ),
     "Citation Accuracy (Precision/Recall)": (
         "Whether real authors and chunk/page numbers are cited without inventing fake ones (%)."
@@ -56,8 +57,13 @@ def build_four_metrics_summary_rows(
                     res.mean_verified_b, res.unit
                 ),
                 "Delta (B - A)": format_metric_value(res.mean_delta, res.unit, signed=True),
+                "SD (s_d)": f"{res.std_delta:.2f}",
+                "Error Reduction": f"{res.pct_error_reduction:+.1f}%",
                 "Paired t-stat": f"{res.t_statistic:.4f}",
                 "p-value": f"{res.t_pvalue:.4e}",
+                "Wilcoxon p": (
+                    f"{res.wilcoxon_pvalue:.4e}" if res.wilcoxon_pvalue is not None else "N/A"
+                ),
             }
         )
     return rows
@@ -101,6 +107,7 @@ def build_claim_audit_rows(trial_b: TrialTelemetry) -> list[dict[str, object]]:
                 "Atomic Sentence": claim.sentence,
                 "Cited Chunks": ", ".join(claim.cited_chunk_ids) or "None",
                 "Extracted Authors": ", ".join(claim.extracted_authors) or "None",
+                "Extracted Years": ", ".join(claim.extracted_years) or "None",
                 "NLI Label": claim.nli_label.value,
                 "NLI Score (%)": f"{claim.entailment_score * 100.0:.1f}%",
                 "Gate Decision": "SURVIVED (TP)" if claim.survived else "PRUNED (TN)",
@@ -119,6 +126,11 @@ def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
         "factual_precision_pct",
         "entailment_consistency_pct",
         "citation_accuracy_pct",
+        "citation_precision_pct",
+        "citation_recall_pct",
+        "hallucination_error_rate_pct",
+        "intrinsic_hallucination_rate_pct",
+        "extrinsic_hallucination_rate_pct",
         "computational_latency_sec",
         "tp",
         "tn",
@@ -137,6 +149,11 @@ def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
                 "factual_precision_pct": f"{t.factual_precision_pct:.2f}",
                 "entailment_consistency_pct": f"{t.entailment_consistency_pct:.2f}",
                 "citation_accuracy_pct": f"{t.citation_accuracy_pct:.2f}",
+                "citation_precision_pct": f"{t.citation_precision_pct:.2f}",
+                "citation_recall_pct": f"{t.citation_recall_pct:.2f}",
+                "hallucination_error_rate_pct": f"{t.hallucination_error_rate_pct:.2f}",
+                "intrinsic_hallucination_rate_pct": f"{t.intrinsic_hallucination_rate_pct:.2f}",
+                "extrinsic_hallucination_rate_pct": f"{t.extrinsic_hallucination_rate_pct:.2f}",
                 "computational_latency_sec": f"{t.computational_latency_sec:.6f}",
                 "tp": t.confusion_matrix.tp,
                 "tn": t.confusion_matrix.tn,
@@ -277,8 +294,6 @@ _DARK_TOKENS: dict[str, str] = {
 }
 
 _BASE_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 html, body, .stApp, [class*="st-"], button, input, textarea {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
 }
@@ -962,15 +977,21 @@ def render_streamlit_app() -> None:  # pragma: no cover
                     unsafe_allow_html=True,
                 )
 
+        ollama_ready = ollama_online and not report.missing_approved_models
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
-            value=not ollama_online,
+            value=not ollama_ready,
             help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
         )
         if not ollama_online and not sim_mode:
             st.caption(
                 "Ollama is offline. Live runs will fall back to simulation if the connection "
                 "is refused."
+            )
+        elif report.missing_approved_models and not sim_mode:
+            st.caption(
+                "One or more approved Ollama models are not pulled yet. Pull the selected model "
+                "before running live inference."
             )
 
         st.markdown('<div class="vr-label">Prompt</div>', unsafe_allow_html=True)
