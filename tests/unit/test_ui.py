@@ -6,8 +6,12 @@ import pytest
 
 from vrag.evaluator import run_student_pdf_benchmark
 from vrag.ui import (
+    _DARK_TOKENS,
+    _LIGHT_TOKENS,
+    _section,
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
+    build_theme_css,
     build_trial_comparison_rows,
     execute_benchmark_safely,
     is_connection_refused_error,
@@ -204,3 +208,25 @@ def test_execute_benchmark_safely_falls_back_on_connection_refused(
     assert all_fail_stats is None
     assert all_fail_err is not None
     assert "Fallback environment failure" in all_fail_err
+
+
+def test_theme_css_generation_and_tokens() -> None:
+    light_css = build_theme_css(dark=False)
+    dark_css = build_theme_css(dark=True)
+
+    assert "color-scheme: light;" in light_css
+    assert "color-scheme: dark;" in dark_css
+    assert f"--bg: {_LIGHT_TOKENS['bg']};" in light_css
+    assert f"--bg: {_DARK_TOKENS['bg']};" in dark_css
+    assert "font-family: 'Inter'" in light_css
+    assert ".vr-card" in dark_css
+    assert ".vr-grid" in light_css
+
+    # Section generator with and without subtitle
+    sec_with_sub = _section("Results", "Detailed analysis")
+    assert '<div class="vr-section">Results</div>' in sec_with_sub
+    assert '<div class="vr-sub">Detailed analysis</div>' in sec_with_sub
+
+    sec_no_sub = _section("Settings")
+    assert '<div class="vr-section">Settings</div>' in sec_no_sub
+    assert "vr-sub" not in sec_no_sub
