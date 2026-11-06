@@ -23,7 +23,10 @@ def test_build_rag_prompt_differs_by_condition_mode() -> None:
     prompt_b = build_rag_prompt("What is attention?", passages, PipelineMode.VERIFIED_B)
 
     assert "[C1] (Page 2)" in prompt_a
+    assert "[C1]" in prompt_a and "(Author, Year)" in prompt_a
     assert "SUMMARY:" in prompt_a
+    assert "Use ONLY the provided context chunks below" not in prompt_a
+    assert "Use ONLY the provided context chunks below" in prompt_b
     assert "Every single sentence MUST end with at least one inline chunk citation" in prompt_b
     assert "VERIFIABLE SUMMARY:" in prompt_b
 
