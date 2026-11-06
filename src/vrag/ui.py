@@ -771,6 +771,30 @@ def _section(title: str, subtitle: str = "") -> str:
     return f'<div class="vr-section">{_esc(title)}</div>{sub}'
 
 
+def build_metric_cards_html(stats: list[PairedStatisticalResult]) -> str:
+    """Render the four headline metrics as compact cards with a colored delta chip."""
+    cards: list[str] = []
+    for res in stats:
+        delta = res.mean_delta
+        lower_is_better = "latency" in res.metric_name.lower()
+        if abs(delta) < 1e-12:
+            tone, arrow = "neutral", "–"
+        else:
+            improved = delta < 0 if lower_is_better else delta > 0
+            tone = "good" if improved else "bad"
+            arrow = "▲" if delta > 0 else "▼"
+        delta_txt = format_metric_value(delta, res.unit, signed=True)
+        base_txt = format_metric_value(res.mean_baseline_a, res.unit)
+        cards.append(
+            f'<div class="vr-card" title="{_esc(METRIC_DESCRIPTIONS.get(res.metric_name, ""))}">'
+            f'<div class="name">{_esc(res.metric_name)}</div>'
+            f'<div class="value">{_esc(format_metric_value(res.mean_verified_b, res.unit))}</div>'
+            f'<div class="row"><span class="vr-chip {tone}">{arrow} {_esc(delta_txt)}</span>'
+            f'<span class="base">Base {_esc(base_txt)}</span></div></div>'
+        )
+    return f'<div class="vr-grid">{"".join(cards)}</div>'
+
+
 def render_streamlit_app() -> None:  # pragma: no cover
     """Render the minimal Streamlit comparative benchmark UI."""
     import streamlit as st

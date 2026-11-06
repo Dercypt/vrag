@@ -11,6 +11,7 @@ from vrag.ui import (
     _section,
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
+    build_metric_cards_html,
     build_theme_css,
     build_trial_comparison_rows,
     execute_benchmark_safely,
@@ -230,3 +231,54 @@ def test_theme_css_generation_and_tokens() -> None:
     sec_no_sub = _section("Settings")
     assert '<div class="vr-section">Settings</div>' in sec_no_sub
     assert "vr-sub" not in sec_no_sub
+
+
+def test_build_metric_cards_html_rendering() -> None:
+    from vrag.evaluator import PairedStatisticalResult
+
+    stats = [
+        PairedStatisticalResult(
+            metric_name="Factual Precision (FActScore)",
+            mean_baseline_a=60.0,
+            mean_verified_b=85.0,
+            mean_delta=25.0,
+            t_statistic=4.2,
+            t_pvalue=0.001,
+            unit="%",
+        ),
+        PairedStatisticalResult(
+            metric_name="Computational Latency",
+            mean_baseline_a=2.5,
+            mean_verified_b=1.8,
+            mean_delta=-0.7,
+            t_statistic=-3.1,
+            t_pvalue=0.01,
+            unit="s",
+        ),
+        PairedStatisticalResult(
+            metric_name="Citation Accuracy (Precision/Recall)",
+            mean_baseline_a=70.0,
+            mean_verified_b=70.0,
+            mean_delta=0.0,
+            t_statistic=0.0,
+            t_pvalue=1.0,
+            unit="%",
+        ),
+    ]
+
+    html_out = build_metric_cards_html(stats)
+    assert '<div class="vr-grid">' in html_out
+    assert "Factual Precision (FActScore)" in html_out
+    assert "85.00%" in html_out
+    assert "vr-chip good" in html_out
+    assert "▲ +25.00%" in html_out
+    assert "Base 60.00%" in html_out
+
+    # Latency: lower is better (-0.7 delta is good and arrow is ▼)
+    assert "Computational Latency" in html_out
+    assert "1.8000s" in html_out
+    assert "▼ -0.7000s" in html_out
+
+    # Zero delta: neutral tone with dash
+    assert "vr-chip neutral" in html_out
+    assert "– +0.00%" in html_out
