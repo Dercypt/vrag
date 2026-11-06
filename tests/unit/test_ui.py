@@ -12,6 +12,8 @@ from vrag.ui import (
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
     build_metric_cards_html,
+    build_output_panel_html,
+    build_table_html,
     build_theme_css,
     build_trial_comparison_rows,
     execute_benchmark_safely,
@@ -282,3 +284,62 @@ def test_build_metric_cards_html_rendering() -> None:
     # Zero delta: neutral tone with dash
     assert "vr-chip neutral" in html_out
     assert "– +0.00%" in html_out
+
+
+def test_build_table_html_and_badges() -> None:
+    rows = [
+        {
+            "Sentence #": "1",
+            "Atomic Sentence": "Transformers use self-attention.",
+            "Gate Decision": "SURVIVED (TP)",
+        },
+        {
+            "Sentence #": "2",
+            "Atomic Sentence": "Einstein invented transformers.",
+            "Gate Decision": "PRUNED (TN)",
+        },
+    ]
+    html_table = build_table_html(rows)
+    assert '<table class="vr-table">' in html_table
+    assert "<th>Atomic Sentence</th>" in html_table
+    assert '<span class="vr-badge good">SURVIVED (TP)</span>' in html_table
+    assert '<span class="vr-badge bad">PRUNED (TN)</span>' in html_table
+    assert '<td class="wide">Transformers use self-attention.</td>' in html_table
+
+
+def test_build_output_panel_html() -> None:
+    from vrag.models import ConfusionMatrix, PipelineMode, StageLatencies, TrialTelemetry
+
+    trial = TrialTelemetry(
+        trial_id="test_trial",
+        pdf_sha256="abc12345",
+        prompt="Explain transformers",
+        model_name="llama3.1:8b-instruct-q4_K_M",
+        mode=PipelineMode.VERIFIED_B,
+        latencies=StageLatencies(
+            t_chunk=0.1,
+            t_retrieve=0.2,
+            t_generate=0.7,
+            t_verify=0.2345,
+        ),
+        atomic_factscore=1.0,
+        entailment_consistency=1.0,
+        citation_precision=1.0,
+        citation_recall=1.0,
+        confusion_matrix=ConfusionMatrix(tp=2, fp=0, tn=0, fn=0),
+        peak_ram_mb=500.0,
+        output_summary="Grounded thesis summary.",
+    )
+
+    panel_verified = build_output_panel_html(trial, verified=True)
+    assert 'class="vr-panel verified"' in panel_verified
+    assert "Verification-driven RAG" in panel_verified
+    assert "Condition B · unsupported claims pruned" in panel_verified
+    assert "Grounded thesis summary." in panel_verified
+    assert "FActScore <b>100.0%</b>" in panel_verified
+    assert "Latency <b>1.2345s</b>" in panel_verified
+
+    panel_base = build_output_panel_html(trial, verified=False)
+    assert 'class="vr-panel base"' in panel_base
+    assert "Base RAG" in panel_base
+    assert "Condition A · unverified output" in panel_base

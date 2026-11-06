@@ -795,6 +795,59 @@ def build_metric_cards_html(stats: list[PairedStatisticalResult]) -> str:
     return f'<div class="vr-grid">{"".join(cards)}</div>'
 
 
+_WIDE_COLUMNS = {"Atomic Sentence", "Prompt", "Description", "Prune Reason"}
+
+
+def build_table_html(rows: list[dict[str, object]]) -> str:
+    """Render rows as a styled, horizontally scrollable HTML table."""
+    if not rows:
+        return '<div class="vr-note">No rows to display.</div>'
+    headers = list(rows[0].keys())
+    head = "".join(f"<th>{_esc(h)}</th>" for h in headers)
+    body_rows: list[str] = []
+    for row in rows:
+        cells: list[str] = []
+        for h in headers:
+            text = str(row.get(h, ""))
+            if text.startswith("SURVIVED"):
+                inner = f'<span class="vr-badge good">{_esc(text)}</span>'
+            elif text.startswith("PRUNED"):
+                inner = f'<span class="vr-badge bad">{_esc(text)}</span>'
+            else:
+                inner = _esc(text)
+            cls = ' class="wide"' if h in _WIDE_COLUMNS else ""
+            cells.append(f"<td{cls}>{inner}</td>")
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+    return (
+        '<div class="vr-table-wrap"><table class="vr-table">'
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
+    )
+
+
+def build_output_panel_html(trial: TrialTelemetry, *, verified: bool) -> str:
+    """Render one condition's output and its four metrics as a panel."""
+    title = "Verification-driven RAG" if verified else "Base RAG"
+    tag = (
+        "Condition B · unsupported claims pruned" if verified else "Condition A · unverified output"
+    )
+    fallback = "All sentences were pruned by the verification gate." if verified else "No output."
+    text = trial.output_summary or ""
+    body_cls = "body" if text else "body empty"
+    stats = [
+        ("FActScore", f"{trial.factual_precision_pct:.1f}%"),
+        ("NLI", f"{trial.entailment_consistency_pct:.1f}%"),
+        ("Citations", f"{trial.citation_accuracy_pct:.1f}%"),
+        ("Latency", f"{trial.computational_latency_sec:.4f}s"),
+    ]
+    chips = "".join(f'<span class="vr-stat">{_esc(k)} <b>{_esc(v)}</b></span>' for k, v in stats)
+    return (
+        f'<div class="vr-panel {"verified" if verified else "base"}">'
+        f'<h4>{_esc(title)}</h4><div class="tag">{_esc(tag)}</div>'
+        f'<div class="{body_cls}">{_esc(text or fallback)}</div>'
+        f'<div class="vr-stats">{chips}</div></div>'
+    )
+
+
 def render_streamlit_app() -> None:  # pragma: no cover
     """Render the minimal Streamlit comparative benchmark UI."""
     import streamlit as st
