@@ -8,6 +8,7 @@ from vrag.evaluator import run_student_pdf_benchmark
 from vrag.ui import (
     _DARK_TOKENS,
     _LIGHT_TOKENS,
+    _esc,
     _section,
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
@@ -343,3 +344,50 @@ def test_build_output_panel_html() -> None:
     assert 'class="vr-panel base"' in panel_base
     assert "Base RAG" in panel_base
     assert "Condition A · unverified output" in panel_base
+
+
+def test_ui_edge_cases_and_html_escaping() -> None:
+    from vrag.models import ConfusionMatrix, PipelineMode, StageLatencies, TrialTelemetry
+
+    # 1. Empty table returns fallback note
+    assert build_table_html([]) == '<div class="vr-note">No rows to display.</div>'
+
+    # 2. Empty output panel falls back to descriptive empty state
+    empty_trial = TrialTelemetry(
+        trial_id="empty_trial",
+        pdf_sha256="abc12345",
+        prompt="Explain transformers",
+        model_name="llama3.1:8b-instruct-q4_K_M",
+        mode=PipelineMode.VERIFIED_B,
+        latencies=StageLatencies(t_chunk=0.0, t_retrieve=0.0, t_generate=0.0, t_verify=0.0),
+        atomic_factscore=0.0,
+        entailment_consistency=0.0,
+        citation_precision=0.0,
+        citation_recall=0.0,
+        confusion_matrix=ConfusionMatrix(tp=0, fp=0, tn=2, fn=0),
+        peak_ram_mb=400.0,
+        output_summary="",
+    )
+
+    empty_verified = build_output_panel_html(empty_trial, verified=True)
+    assert 'class="body empty"' in empty_verified
+    assert "All sentences were pruned by the verification gate." in empty_verified
+
+    empty_base = build_output_panel_html(empty_trial, verified=False)
+    assert 'class="body empty"' in empty_base
+    assert "No output." in empty_base
+
+    # 3. HTML escaping prevents XSS / markup corruption
+    assert (
+        _esc("<script>alert('xss')</script>")
+        == "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+    )
+    xss_row = [
+        {
+            "Claim": "<script>alert('xss')</script>",
+            "Gate Decision": "PRUNED (TN)",
+        }
+    ]
+    rendered_xss = build_table_html(xss_row)
+    assert "<script>" not in rendered_xss
+    assert "&lt;script&gt;" in rendered_xss
