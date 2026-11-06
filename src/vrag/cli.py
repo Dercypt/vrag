@@ -9,6 +9,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from vrag.corpus import run_curated_corpus_benchmark
 from vrag.evaluator import (
     ComparativeEvaluator,
     PairedStatisticalResult,
@@ -17,7 +18,7 @@ from vrag.evaluator import (
     export_telemetry_csv,
     run_student_pdf_benchmark,
 )
-from vrag.generator import OllamaGenerator, OllamaHealthReport, check_ollama_status, diagnose_ollama
+from vrag.generator import OllamaGenerator, OllamaHealthReport, diagnose_ollama
 from vrag.models import APPROVED_MODELS, NLILabel, NLIScore, TrialTelemetry
 
 console = Console()
@@ -36,10 +37,12 @@ def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
     """Build a Rich comparative table for Condition A vs Condition B across the 4 core metrics."""
     table = Table(title="Condition A (Base RAG) vs. Condition B (Verification-Driven RAG)")
     table.add_column("Metric", style="bold cyan", no_wrap=True)
-    table.add_column("Base RAG (Mean)", justify="right")
-    table.add_column("Verified RAG (Mean)", justify="right")
-    table.add_column("Delta (B - A)", justify="right", style="bold green")
-    table.add_column("Paired t-stat", justify="right")
+    table.add_column("Base (Mean)", justify="right")
+    table.add_column("Verified (Mean)", justify="right")
+    table.add_column("Delta", justify="right", style="bold green")
+    table.add_column("SD", justify="right")
+    table.add_column("Err Red", justify="right")
+    table.add_column("t-stat", justify="right")
     table.add_column("p-value", justify="right", style="bold yellow")
 
     for res in results:
@@ -48,6 +51,8 @@ def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
             format_metric_value(res.mean_baseline_a, res.unit),
             format_metric_value(res.mean_verified_b, res.unit),
             format_metric_value(res.mean_delta, res.unit, signed=True),
+            f"{res.std_delta:.2f}",
+            f"{res.pct_error_reduction:+.1f}%",
             f"{res.t_statistic:.4f}",
             f"{res.t_pvalue:.4e}",
         )
@@ -122,8 +127,8 @@ def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatistic
             }
         return {
             "response": (
-                "Vaswani et al. (2017) proposed the Transformer architecture. "
-                "Recurrent gates completely replace attention in all modern LLMs."
+                "Vaswani et al. (2017) proposed the Transformer architecture [C1]. "
+                "Recurrent gates completely replace attention in all modern LLMs [C1]."
             )
         }
 
@@ -200,6 +205,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--pdf", type=str, help="Path to academic PDF file to benchmark.")
     parser.add_argument(
+        "--corpus",
+        type=str,
+        help="Path to curated benchmark corpus directory (e.g. data/benchmark_corpus).",
+    )
+    parser.add_argument(
         "--query",
         type=str,
         default="Summarize the key contributions and methodology of this paper.",
@@ -217,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Run deterministic offline comparative benchmark across all 3 models.",
     )
     parser.add_argument(
+        "--simulation",
+        action="store_true",
+        help="Force deterministic offline simulation mode.",
+    )
+    parser.add_argument(
         "--doctor",
         action="store_true",
         help="Diagnose local Ollama daemon connectivity and approved models.",
@@ -226,16 +241,41 @@ def main(argv: list[str] | None = None) -> int:
     if args.doctor:
         return run_doctor_check()
 
+    if args.corpus:
+        health = diagnose_ollama()
+        ollama_ready = (
+            (not args.simulation) and health.is_online and not health.missing_approved_models
+        )
+        if not ollama_ready and not args.simulation:
+            console.print(
+                f"[yellow]Notice: {health.message} "
+                "Running curated corpus in Deterministic Simulation Mode (Fast Offline).[/yellow]"
+            )
+        pairs, stats = run_curated_corpus_benchmark(
+            corpus_dir=Path(args.corpus),
+            models=APPROVED_MODELS,
+            top_k=3,
+            simulation_mode=not ollama_ready,
+        )
+        all_trials = [t for pair in pairs for t in pair]
+        out_dir = Path(args.output_dir)
+        export_telemetry_csv(all_trials, out_dir / "telemetry.csv")
+        export_summary_json(all_trials, stats, out_dir / "summary.json")
+        console.print(render_trial_telemetry_table(all_trials))
+        console.print(render_comparison_table(stats))
+        return 0
+
     if args.demo or not args.pdf:
         run_synthetic_demo_benchmark(output_dir=args.output_dir)
         return 0
 
     pdf_path = Path(args.pdf)
     pdf_bytes = pdf_path.read_bytes()
-    ollama_live = check_ollama_status()
-    if not ollama_live:
+    health = diagnose_ollama()
+    ollama_ready = (not args.simulation) and health.is_online and not health.missing_approved_models
+    if not ollama_ready and not args.simulation:
         console.print(
-            "[yellow]Notice: Local Ollama daemon unreachable at http://localhost:11434. "
+            f"[yellow]Notice: {health.message} "
             "Running benchmark in Deterministic Simulation Mode (Fast Offline).[/yellow]"
         )
     pairs, stats = run_student_pdf_benchmark(
@@ -243,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         pdf_name=pdf_path.name,
         models=APPROVED_MODELS,
         top_k=3,
-        simulation_mode=not ollama_live,
+        simulation_mode=not ollama_ready,
     )
     all_trials = [t for pair in pairs for t in pair]
 
