@@ -46,3 +46,15 @@ def test_cli_main_demo_flag_exits_zero(tmp_path: Path) -> None:
     exit_code = main(["--demo", "--output-dir", str(tmp_path)])
     assert exit_code == 0
     assert (tmp_path / "telemetry.csv").exists()
+
+
+def test_cli_main_pdf_input_runs_simulation_when_ollama_offline(tmp_path: Path) -> None:
+    sample_pdf = tmp_path / "test_doc.pdf"
+    sample_pdf.write_bytes(
+        b"Vaswani et al. (2017) introduced transformers.\f"
+        b"Lewis et al. (2020) proposed retrieval-augmented generation."
+    )
+    exit_code = main(["--pdf", str(sample_pdf), "--output-dir", str(tmp_path)])
+    assert exit_code == 0
+    assert (tmp_path / "telemetry.csv").exists()
+    assert (tmp_path / "summary.json").exists()

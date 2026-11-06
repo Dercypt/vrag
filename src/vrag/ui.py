@@ -258,11 +258,21 @@ def render_streamlit_app() -> None:  # pragma: no cover
             default=[APPROVED_MODELS[0]],
         )
         ollama_online = check_ollama_status()
+        if ollama_online:
+            st.success("🟢 Local Ollama daemon is online (http://localhost:11434)")
+        else:
+            st.warning("⚠️ Local Ollama daemon is offline (http://localhost:11434)")
+
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
             value=not ollama_online,
             help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
         )
+        if not ollama_online and not sim_mode:
+            st.info(
+                "💡 Notice: Ollama daemon is offline. Running live mode will automatically "
+                "fall back to Simulation Mode if connection is refused."
+            )
         custom_query = st.text_input(
             "Optional Custom Prompt (leave blank to run 4-prompt benchmark suite)",
             value="",
