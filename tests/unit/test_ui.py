@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vrag.evaluator import run_student_pdf_benchmark
+from vrag.generator import OllamaHealthReport
 from vrag.ui import (
     _DARK_TOKENS,
     _LIGHT_TOKENS,
@@ -13,6 +14,7 @@ from vrag.ui import (
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
     build_metric_cards_html,
+    build_ollama_troubleshooting_html,
     build_output_panel_html,
     build_table_html,
     build_theme_css,
@@ -391,3 +393,47 @@ def test_ui_edge_cases_and_html_escaping() -> None:
     rendered_xss = build_table_html(xss_row)
     assert "<script>" not in rendered_xss
     assert "&lt;script&gt;" in rendered_xss
+
+
+def test_build_ollama_troubleshooting_html_rendering() -> None:
+    # 1. Offline report renders setup guide and commands
+    offline_report = OllamaHealthReport(
+        is_online=False,
+        base_url="http://localhost:11434",
+        installed_models=(),
+        missing_approved_models=("llama3.1:8b-instruct-q4_K_M",),
+        message="Local Ollama daemon is unreachable at http://localhost:11434.",
+        troubleshooting_steps=(
+            "Install Ollama: brew install --cask ollama",
+            "Start the daemon in a terminal: ollama serve",
+        ),
+    )
+    html_offline = build_ollama_troubleshooting_html(offline_report)
+    assert "How to Fix: Ollama Offline" in html_offline
+    assert "brew install --cask ollama" in html_offline
+    assert "ollama serve" in html_offline
+
+    # 2. Online with missing models
+    partial_report = OllamaHealthReport(
+        is_online=True,
+        base_url="http://localhost:11434",
+        installed_models=("mistral:7b-instruct-v0.3-q4_K_M",),
+        missing_approved_models=("llama3.1:8b-instruct-q4_K_M",),
+        message="Ollama is online, but 1 model is missing.",
+        troubleshooting_steps=("ollama pull llama3.1:8b-instruct-q4_K_M",),
+    )
+    html_partial = build_ollama_troubleshooting_html(partial_report)
+    assert "Missing Approved Models" in html_partial
+    assert "ollama pull llama3.1:8b-instruct-q4_K_M" in html_partial
+
+    # 3. Online and fully ready
+    ready_report = OllamaHealthReport(
+        is_online=True,
+        base_url="http://localhost:11434",
+        installed_models=("llama3.1:8b-instruct-q4_K_M",),
+        missing_approved_models=(),
+        message="Ollama is ready.",
+        troubleshooting_steps=(),
+    )
+    html_ready = build_ollama_troubleshooting_html(ready_report)
+    assert "Daemon Ready" in html_ready

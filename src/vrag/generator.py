@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
@@ -11,6 +12,29 @@ from vrag.models import APPROVED_MODELS, PipelineMode, RetrievedPassage
 ALLOWED_LOCAL_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
 
 HttpPostFn = Callable[[str, dict[str, Any]], dict[str, Any]]
+HttpGetFn = Callable[[str], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class OllamaHealthReport:
+    """Diagnostic report on local Ollama daemon connectivity and available models."""
+
+    is_online: bool
+    base_url: str
+    installed_models: tuple[str, ...]
+    missing_approved_models: tuple[str, ...]
+    message: str
+    troubleshooting_steps: tuple[str, ...]
+
+
+def _model_matches(approved: str, installed: str) -> bool:
+    app_clean = approved.strip().lower()
+    inst_clean = installed.strip().lower()
+    return (
+        app_clean == inst_clean
+        or inst_clean.startswith(f"{app_clean}:")
+        or (app_clean + ":latest") == inst_clean
+    )
 
 
 def validate_offline_ollama_url(base_url: str) -> str:
@@ -36,6 +60,82 @@ def check_ollama_status(base_url: str = "http://localhost:11434", timeout: float
             return resp.status_code == 200
     except Exception:
         return False
+
+
+def diagnose_ollama(
+    base_url: str = "http://localhost:11434",
+    timeout: float = 1.5,
+    http_get_fn: HttpGetFn | None = None,
+) -> OllamaHealthReport:
+    """Perform a comprehensive diagnostic check of the local Ollama service.
+
+    Enforces LAW 2 offline loopback execution, checks daemon connectivity,
+    and inspects installed models against the thesis-approved models.
+    """
+    clean_url = validate_offline_ollama_url(base_url)
+
+    try:
+        if http_get_fn is not None:
+            data = http_get_fn(f"{clean_url}/api/tags")
+        else:
+            import httpx
+
+            with httpx.Client(timeout=timeout, trust_env=False) as client:
+                resp = client.get(f"{clean_url}/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+
+        raw_models = data.get("models", [])
+        installed_names = tuple(
+            str(m.get("name", "")) for m in raw_models if isinstance(m, dict) and m.get("name")
+        )
+
+        missing = tuple(
+            app
+            for app in APPROVED_MODELS
+            if not any(_model_matches(app, inst) for inst in installed_names)
+        )
+
+        if not missing:
+            msg = (
+                f"Ollama is online at {clean_url} and all {len(APPROVED_MODELS)} "
+                "thesis models are ready."
+            )
+            steps: tuple[str, ...] = ()
+        else:
+            msg = (
+                f"Ollama is online at {clean_url}, but {len(missing)} of {len(APPROVED_MODELS)} "
+                "approved models are missing."
+            )
+            steps = tuple(f"ollama pull {m}" for m in missing)
+
+        return OllamaHealthReport(
+            is_online=True,
+            base_url=clean_url,
+            installed_models=installed_names,
+            missing_approved_models=missing,
+            message=msg,
+            troubleshooting_steps=steps,
+        )
+
+    except Exception as err:
+        steps = (
+            "Install Ollama: brew install --cask ollama (or download from https://ollama.com)",
+            "Start the daemon in a terminal: ollama serve",
+            f"Pull the required models: ollama pull {APPROVED_MODELS[0]}",
+            (
+                "Or tick 'Use Deterministic Simulation Mode (Fast Offline)' in the UI "
+                "to run without Ollama."
+            ),
+        )
+        return OllamaHealthReport(
+            is_online=False,
+            base_url=clean_url,
+            installed_models=(),
+            missing_approved_models=APPROVED_MODELS,
+            message=f"Local Ollama daemon is unreachable at {clean_url} ({err}).",
+            troubleshooting_steps=steps,
+        )
 
 
 def _default_http_post(url: str, payload: dict[str, Any]) -> dict[str, Any]:

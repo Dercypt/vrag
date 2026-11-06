@@ -59,6 +59,46 @@ PYTHONPATH=src python3 -m vrag.cli --demo --output-dir outputs/demo
 PYTHONPATH=src python3 -m vrag.cli --pdf path/to/student_paper.pdf --output-dir outputs/run1
 ```
 
+### 6. Environment Health & Ollama Diagnostics
+```bash
+PYTHONPATH=src python3 -m vrag.cli --doctor
+```
+
+---
+
+## Fixing Ollama Offline (`localhost:11434`)
+
+If the Streamlit sidebar displays `🟡 Ollama offline · localhost:11434`, the local Ollama daemon is either stopped or not installed. You have two options:
+
+### Option A: Enable Live Local LLM Execution
+1. **Install Ollama** (macOS):
+   ```bash
+   brew install --cask ollama
+   # Or download manually from https://ollama.com/download
+   ```
+2. **Start the local daemon**:
+   ```bash
+   ollama serve
+   # Or launch the Ollama macOS application
+   ```
+3. **Pull approved thesis models**:
+   ```bash
+   ollama pull mistral:7b-instruct-v0.3-q4_K_M
+   ollama pull llama3.1:8b-instruct-q4_K_M
+   ollama pull qwen2.5:7b-instruct-q4_K_M
+   ```
+4. **Verify connectivity**:
+   ```bash
+   curl http://localhost:11434/api/tags
+   PYTHONPATH=src python3 -m vrag.cli --doctor
+   ```
+   Refresh the Streamlit UI to see `🟢 Ollama online · localhost:11434`.
+
+### Option B: Fast Offline Simulation Mode (Zero Setup)
+- In the UI sidebar, check **"Use Deterministic Simulation Mode (Fast Offline)"**.
+- Runs 100% locally with zero downloads, instant responses, and complete 4-metric evaluation.
+- If Ollama is offline and the checkbox is unchecked, live runs automatically fall back to simulation mode with a notice rather than terminating.
+
 ---
 
 ## Offline Execution & Zero Internet Requirement

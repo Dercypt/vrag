@@ -17,7 +17,7 @@ from vrag.evaluator import (
     export_telemetry_csv,
     run_student_pdf_benchmark,
 )
-from vrag.generator import OllamaGenerator, check_ollama_status
+from vrag.generator import OllamaGenerator, OllamaHealthReport, check_ollama_status, diagnose_ollama
 from vrag.models import APPROVED_MODELS, NLILabel, NLIScore, TrialTelemetry
 
 console = Console()
@@ -157,6 +157,41 @@ def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatistic
     return stats
 
 
+def run_doctor_check(report_override: OllamaHealthReport | None = None) -> int:
+    """Run health check against local Ollama service and print rich diagnostics."""
+    report = report_override if report_override is not None else diagnose_ollama()
+    status_style = "bold green" if report.is_online else "bold red"
+    status_label = "ONLINE" if report.is_online else "OFFLINE"
+
+    console.print("\n[bold]vrag Environment Doctor[/bold]")
+    console.print(
+        f"Ollama Daemon: [{status_style}]{status_label}[/{status_style}] ({report.base_url})"
+    )
+    console.print(f"Status Note:   {report.message}\n")
+
+    if report.is_online:
+        console.print(f"[bold cyan]Installed Models ({len(report.installed_models)}):[/bold cyan]")
+        for m in report.installed_models:
+            console.print(f"  • {m}")
+        if report.missing_approved_models:
+            console.print(
+                f"\n[bold yellow]Missing Approved Models "
+                f"({len(report.missing_approved_models)}):[/bold yellow]"
+            )
+            for m in report.missing_approved_models:
+                console.print(f"  • {m} (Run: ollama pull {m})")
+        else:
+            console.print(
+                "\n[bold green]✓ All approved thesis models are present and ready.[/bold green]"
+            )
+    else:
+        console.print("[bold yellow]Troubleshooting & Remediation Steps:[/bold yellow]")
+        for idx, step in enumerate(report.troubleshooting_steps, 1):
+            console.print(f"  {idx}. {step}")
+
+    return 0 if (report.is_online and not report.missing_approved_models) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for vrag."""
     parser = argparse.ArgumentParser(
@@ -181,7 +216,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run deterministic offline comparative benchmark across all 3 models.",
     )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Diagnose local Ollama daemon connectivity and approved models.",
+    )
     args = parser.parse_args(argv)
+
+    if args.doctor:
+        return run_doctor_check()
 
     if args.demo or not args.pdf:
         run_synthetic_demo_benchmark(output_dir=args.output_dir)
