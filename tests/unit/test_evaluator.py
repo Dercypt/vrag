@@ -107,6 +107,11 @@ def test_comparative_evaluator_runs_paired_trial_and_exports_csv_json(tmp_path: 
     assert factscore_stat.mean_baseline_a == 50.0
     assert factscore_stat.mean_verified_b == 100.0
     assert factscore_stat.mean_delta == 50.0
+    assert factscore_stat.pct_error_reduction == 100.0
+    assert trial_a.intrinsic_hallucinations == 1
+    assert trial_a.intrinsic_hallucination_rate_pct == 50.0
+    assert trial_b.intrinsic_hallucination_rate_pct == 0.0
+    assert trial_b.extrinsic_hallucination_rate_pct == 0.0
 
     csv_path = tmp_path / "telemetry.csv"
     json_path = tmp_path / "summary.json"
@@ -118,6 +123,7 @@ def test_comparative_evaluator_runs_paired_trial_and_exports_csv_json(tmp_path: 
         rows = list(csv.DictReader(fh))
     assert len(rows) == 4
     assert rows[0]["trial_id"] == "trial_01"
+    assert rows[0]["intrinsic_hallucination_rate_pct"] == "50.00"
     assert rows[1]["mode"] == "condition_b_verified"
     assert rows[1]["factual_precision_pct"] == "100.00"
 

@@ -10,6 +10,8 @@ import os
 import resource
 import sys
 import time
+import warnings
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -32,15 +34,26 @@ from vrag.models import (
 )
 from vrag.retriever import LocalVectorRetriever
 from vrag.verifier import (
+    GroundTruthFn,
     NLIScorerFn,
     evaluate_unverified_summary,
     verify_and_prune_summary,
 )
 
 
+def _sample_std(values: list[float]) -> float:
+    """Compute sample standard deviation (ddof=1) for n >= 2."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean_val = sum(values) / n
+    variance = sum((x - mean_val) ** 2 for x in values) / (n - 1)
+    return math.sqrt(max(0.0, variance))
+
+
 @dataclass(frozen=True)
 class PairedStatisticalResult:
-    """Paired t-test and Wilcoxon significance result across N comparative trials."""
+    """Paired t-test, Wilcoxon, and descriptive statistics across N comparative trials."""
 
     metric_name: str
     mean_baseline_a: float
@@ -50,15 +63,29 @@ class PairedStatisticalResult:
     t_pvalue: float
     wilcoxon_pvalue: float | None = None
     unit: str = "%"
+    std_baseline_a: float = 0.0
+    std_verified_b: float = 0.0
+    std_delta: float = 0.0
+    pct_error_reduction: float = 0.0
+    normality_pvalue: float | None = None
 
 
 def get_peak_ram_mb() -> float:
-    """Return current process RSS / peak memory usage in megabytes (LAW 4)."""
+    """Return process RSS + local Ollama runner RSS memory usage in megabytes (LAW 4)."""
     try:
         import psutil  # type: ignore[import-untyped]
 
-        process = psutil.Process(os.getpid())
-        return float(process.memory_info().rss) / (1024.0 * 1024.0)
+        current_pid = os.getpid()
+        total_rss = float(psutil.Process(current_pid).memory_info().rss)
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                info = proc.info
+                pname = str(info.get("name") or "").lower()
+                if info.get("pid") != current_pid and "ollama" in pname:
+                    total_rss += float(proc.memory_info().rss)
+            except Exception:
+                continue
+        return total_rss / (1024.0 * 1024.0)
     except Exception:
         usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # On macOS ru_maxrss is in bytes; on Linux it is in kilobytes
@@ -95,7 +122,7 @@ def run_paired_significance_test(
     verified_scores: list[float],
     unit: str = "%",
 ) -> PairedStatisticalResult:
-    """Enforce LAW 5: Compute paired t-test (scipy.stats.ttest_rel) & Wilcoxon p-value."""
+    """Enforce LAW 5: Compute descriptive stats, normality, paired t-test & Wilcoxon p-value."""
     if len(baseline_scores) != len(verified_scores):
         raise ValueError("LAW 5 violation: Paired sample arrays must have identical length")
     if len(baseline_scores) < 2:
@@ -108,8 +135,28 @@ def run_paired_significance_test(
     delta = mean_b - mean_a
 
     diffs = [b - a for a, b in zip(baseline_scores, verified_scores)]
-    if all(abs(d - diffs[0]) < 1e-12 for d in diffs):
-        # Zero variance in paired differences
+    std_a = _sample_std(baseline_scores)
+    std_b = _sample_std(verified_scores)
+    std_d = _sample_std(diffs)
+
+    if unit == "%":
+        scale_max = 1.0 if (max(baseline_scores + verified_scores) <= 1.0) else 100.0
+        err_a = max(0.0, scale_max - mean_a)
+        err_b = max(0.0, scale_max - mean_b)
+        pct_err_red = ((err_a - err_b) / err_a) * 100.0 if err_a > 1e-12 else 0.0
+    else:
+        pct_err_red = ((mean_a - mean_b) / mean_a) * 100.0 if mean_a > 1e-12 else 0.0
+
+    zero_var = all(abs(d - diffs[0]) < 1e-12 for d in diffs)
+    normality_pval: float | None = None
+    if len(diffs) >= 3 and not zero_var:
+        try:
+            shapiro_res = stats.shapiro(diffs)
+            normality_pval = float(shapiro_res.pvalue)
+        except Exception:
+            normality_pval = None
+
+    if zero_var:
         t_stat = math.copysign(float("inf"), diffs[0]) if diffs[0] != 0.0 else 0.0
         t_pval = 0.0 if diffs[0] != 0.0 else 1.0
     else:
@@ -120,7 +167,9 @@ def run_paired_significance_test(
     wilcoxon_pval: float | None = None
     if any(d != 0.0 for d in diffs):
         try:
-            w_res = stats.wilcoxon(verified_scores, baseline_scores)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                w_res = stats.wilcoxon(verified_scores, baseline_scores)
             wilcoxon_pval = float(w_res.pvalue)
         except ValueError:
             wilcoxon_pval = None
@@ -134,6 +183,11 @@ def run_paired_significance_test(
         t_pvalue=t_pval,
         wilcoxon_pvalue=wilcoxon_pval,
         unit=unit,
+        std_baseline_a=std_a,
+        std_verified_b=std_b,
+        std_delta=std_d,
+        pct_error_reduction=pct_err_red,
+        normality_pvalue=normality_pval,
     )
 
 
@@ -202,6 +256,7 @@ class ComparativeEvaluator:
         query: str,
         model_name: str,
         top_k: int = 3,
+        ground_truth_fn: GroundTruthFn | None = None,
     ) -> tuple[TrialTelemetry, TrialTelemetry]:
         """Run both Condition A and Condition B on identical PDF bytes, query, and model."""
         pdf_sha = compute_pdf_sha256(pdf_bytes)
@@ -233,6 +288,7 @@ class ComparativeEvaluator:
             retrieved_chunks=[p.chunk for p in passages_a],
             entailment_threshold=self.entailment_threshold,
             nli_scorer=self.nli_scorer,
+            ground_truth_fn=ground_truth_fn,
         )
         trial_a = TrialTelemetry(
             trial_id=trial_id,
@@ -254,6 +310,8 @@ class ComparativeEvaluator:
             peak_ram_mb=get_peak_ram_mb(),
             output_summary=eval_report_a.verified_summary,
             claim_audit=eval_report_a.claim_results,
+            intrinsic_hallucinations=eval_report_a.intrinsic_hallucinations,
+            extrinsic_hallucinations=eval_report_a.extrinsic_hallucinations,
         )
 
         # --- Condition B: Proposed Verification-Driven RAG ---
@@ -286,6 +344,7 @@ class ComparativeEvaluator:
             retrieved_chunks=[p.chunk for p in passages_b],
             entailment_threshold=self.entailment_threshold,
             nli_scorer=self.nli_scorer,
+            ground_truth_fn=ground_truth_fn,
         )
         t_verify_b = time.perf_counter() - t6
 
@@ -309,6 +368,8 @@ class ComparativeEvaluator:
             peak_ram_mb=get_peak_ram_mb(),
             output_summary=ver_report_b.verified_summary,
             claim_audit=ver_report_b.claim_results,
+            intrinsic_hallucinations=ver_report_b.intrinsic_hallucinations,
+            extrinsic_hallucinations=ver_report_b.extrinsic_hallucinations,
         )
 
         verify_experimental_parity(trial_a, trial_b)
@@ -316,14 +377,19 @@ class ComparativeEvaluator:
 
     def run_sequential_model_sweep(
         self,
-        documents: list[tuple[str, bytes, str]],
+        documents: Sequence[tuple[str, bytes, str] | tuple[str, bytes, str, GroundTruthFn | None]],
         models: tuple[str, ...] = APPROVED_MODELS,
         top_k: int = 3,
     ) -> list[tuple[TrialTelemetry, TrialTelemetry]]:
         """Enforce LAW 4: Run benchmark sweep sequentially one model at a time, unloading after."""
         all_pairs: list[tuple[TrialTelemetry, TrialTelemetry]] = []
         for model_name in models:
-            for doc_id, pdf_bytes, query in documents:
+            for item in documents:
+                if len(item) == 4:
+                    doc_id, pdf_bytes, query, gt_fn = item
+                else:
+                    doc_id, pdf_bytes, query = item
+                    gt_fn = None
                 trial_id = f"{doc_id}_{model_name.split(':')[0]}"
                 pair = self.run_paired_trial(
                     trial_id=trial_id,
@@ -331,6 +397,7 @@ class ComparativeEvaluator:
                     query=query,
                     model_name=model_name,
                     top_k=top_k,
+                    ground_truth_fn=gt_fn,
                 )
                 all_pairs.append(pair)
             self.generator.unload_model(model_name)
@@ -354,6 +421,11 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
         "factual_precision_pct",
         "entailment_consistency_pct",
         "citation_accuracy_pct",
+        "citation_precision_pct",
+        "citation_recall_pct",
+        "hallucination_error_rate_pct",
+        "intrinsic_hallucination_rate_pct",
+        "extrinsic_hallucination_rate_pct",
         "atomic_factscore",
         "entailment_consistency",
         "citation_precision",
@@ -362,6 +434,8 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
         "tn",
         "fp",
         "fn",
+        "intrinsic_hallucinations",
+        "extrinsic_hallucinations",
         "peak_ram_mb",
     ]
     with path.open("w", newline="", encoding="utf-8") as fh:
@@ -382,6 +456,11 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
                     "factual_precision_pct": f"{t.factual_precision_pct:.2f}",
                     "entailment_consistency_pct": f"{t.entailment_consistency_pct:.2f}",
                     "citation_accuracy_pct": f"{t.citation_accuracy_pct:.2f}",
+                    "citation_precision_pct": f"{t.citation_precision_pct:.2f}",
+                    "citation_recall_pct": f"{t.citation_recall_pct:.2f}",
+                    "hallucination_error_rate_pct": f"{t.hallucination_error_rate_pct:.2f}",
+                    "intrinsic_hallucination_rate_pct": f"{t.intrinsic_hallucination_rate_pct:.2f}",
+                    "extrinsic_hallucination_rate_pct": f"{t.extrinsic_hallucination_rate_pct:.2f}",
                     "atomic_factscore": f"{t.atomic_factscore:.4f}",
                     "entailment_consistency": f"{t.entailment_consistency:.4f}",
                     "citation_precision": f"{t.citation_precision:.4f}",
@@ -390,6 +469,8 @@ def export_telemetry_csv(trials: list[TrialTelemetry], output_path: Path | str) 
                     "tn": t.confusion_matrix.tn,
                     "fp": t.confusion_matrix.fp,
                     "fn": t.confusion_matrix.fn,
+                    "intrinsic_hallucinations": t.intrinsic_hallucinations,
+                    "extrinsic_hallucinations": t.extrinsic_hallucinations,
                     "peak_ram_mb": f"{t.peak_ram_mb:.2f}",
                 }
             )
@@ -428,13 +509,21 @@ def _build_simulation_evaluator() -> ComparativeEvaluator:
         if payload.get("keep_alive") == 0:
             return {"done": True}
         prompt = str(payload.get("prompt", ""))
-        # Extract the first chunk text and ID from the bounded prompt context
-        match = re.search(r"\[(C\d+)\]\s*\(Page\s*\d+\):\s*(.+)", prompt)
-        chunk_id = match.group(1) if match else "C1"
-        raw_context = match.group(2) if match else "The study evaluates RAG pipelines."
-        first_sent = (
-            split_sentences(raw_context)[0] if split_sentences(raw_context) else raw_context
+        match = re.search(
+            r"\[(C\d+)\]\s*\(Page\s*\d+\):\s*(.+?)(?=\n\n\[C\d+\]|\n\nQUERY:|\Z)",
+            prompt,
+            flags=re.DOTALL,
         )
+        chunk_id = match.group(1) if match else "C1"
+        raw_context = (
+            " ".join(match.group(2).split()) if match else "The study evaluates RAG pipelines."
+        )
+        sents = split_sentences(raw_context)
+        chosen_sent = next(
+            (s for s in sents if re.search(r"\b(?:19|20)\d{2}\b", s)),
+            sents[0] if sents else raw_context,
+        )
+        first_sent = chosen_sent.rstrip(".")
 
         if "VERIFIABLE SUMMARY:" in prompt:
             return {
@@ -446,9 +535,9 @@ def _build_simulation_evaluator() -> ComparativeEvaluator:
             }
         return {
             "response": (
-                f"{first_sent} "
-                "Furthermore, unverified speculative claims replace empirical grounding "
-                "without any source support."
+                f"{first_sent} [{chunk_id}]. "
+                f"Furthermore, (FabricatedAuthor, 2025) proved unverified speculative claims "
+                f"replace empirical grounding [{chunk_id}]."
             )
         }
 
