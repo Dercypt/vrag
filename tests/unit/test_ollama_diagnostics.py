@@ -65,3 +65,30 @@ def test_diagnose_ollama_rejects_external_hosts_per_law2() -> None:
     """Per LAW 2, non-loopback endpoints must be rejected."""
     with pytest.raises(ValueError, match="LAW 2 violation"):
         diagnose_ollama(base_url="https://remote.ollama.com")
+
+
+def test_diagnose_and_check_ollama_with_reusable_client() -> None:
+    """Passing a reusable httpx.Client avoids connection teardown on repeated checks."""
+    import httpx
+
+    from vrag.generator import check_ollama_status
+
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"models": [{"name": APPROVED_MODELS[0]}]})
+
+    mock_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://127.0.0.1:11434",
+    )
+
+    is_online = check_ollama_status(base_url="http://127.0.0.1:11434", client=mock_client)
+    assert is_online is True
+
+    report = diagnose_ollama(base_url="http://127.0.0.1:11434", client=mock_client)
+    assert report.is_online is True
+    assert len(calls) == 2
+    assert calls[0].url.path == "/api/tags"
+    assert calls[1].url.path == "/api/tags"
