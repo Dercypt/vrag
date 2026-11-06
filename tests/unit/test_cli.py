@@ -50,7 +50,24 @@ def test_cli_main_demo_flag_exits_zero(tmp_path: Path) -> None:
     assert (tmp_path / "telemetry.csv").exists()
 
 
-def test_cli_main_pdf_input_runs_simulation_when_ollama_offline(tmp_path: Path) -> None:
+def test_cli_main_pdf_input_runs_simulation_when_ollama_offline(
+    tmp_path: Path,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    import vrag.cli
+
+    monkeypatch.setattr(
+        vrag.cli,
+        "diagnose_ollama",
+        lambda: OllamaHealthReport(
+            is_online=False,
+            base_url="http://localhost:11434",
+            installed_models=(),
+            missing_approved_models=("llama3.1:8b-instruct-q4_K_M",),
+            message="Local Ollama daemon is unreachable.",
+            troubleshooting_steps=(),
+        ),
+    )
     sample_pdf = tmp_path / "test_doc.pdf"
     sample_pdf.write_bytes(
         b"Vaswani et al. (2017) introduced transformers.\f"
