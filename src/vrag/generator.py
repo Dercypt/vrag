@@ -141,16 +141,47 @@ def diagnose_ollama(
         )
 
 
-def _default_http_post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Send synchronous JSON POST to local Ollama daemon."""
-    validate_offline_ollama_url(url)
-    import httpx
+_SHARED_CLIENT: httpx.Client | None = None
 
-    with httpx.Client(timeout=180.0, trust_env=False) as client:
-        resp = client.post(url, json=payload)
-        resp.raise_for_status()
-        data: dict[str, Any] = resp.json()
-        return data
+
+def get_shared_client() -> httpx.Client:
+    """Module-level shared persistent client session for high-throughput local HTTP calls."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is None or getattr(_SHARED_CLIENT, "is_closed", False):
+        import httpx
+
+        transport = httpx.HTTPTransport(
+            retries=3,
+            limits=httpx.Limits(
+                max_keepalive_connections=10,
+                max_connections=20,
+                keepalive_expiry=120.0,
+            ),
+        )
+        _SHARED_CLIENT = httpx.Client(
+            timeout=httpx.Timeout(180.0, connect=5.0),
+            transport=transport,
+            trust_env=False,
+        )
+    return _SHARED_CLIENT
+
+
+def close_shared_client() -> None:
+    """Close module-level shared persistent client."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is not None and not getattr(_SHARED_CLIENT, "is_closed", False):
+        _SHARED_CLIENT.close()
+        _SHARED_CLIENT = None
+
+
+def _default_http_post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Send synchronous JSON POST to local Ollama daemon using persistent pooled connection."""
+    validate_offline_ollama_url(url)
+    client = get_shared_client()
+    resp = client.post(url, json=payload)
+    resp.raise_for_status()
+    data: dict[str, Any] = resp.json()
+    return data
 
 
 def build_rag_prompt(
@@ -248,6 +279,15 @@ class OllamaGenerator:
         except Exception:
             pass
 
+    def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Send JSON POST using this instance's persistent connection pool."""
+        validate_offline_ollama_url(url)
+        client = self.get_client()
+        resp = client.post(url, json=payload)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        return data
+
     def ensure_single_model_loaded(self, target_model: str) -> None:
         """Enforce LAW 4: Unload any previously active model before loading a new one."""
         if target_model not in APPROVED_MODELS:
@@ -259,11 +299,15 @@ class OllamaGenerator:
     def unload_model(self, model_name: str) -> None:
         """Send keep_alive=0 to free RAM on the 2019 MacBook Pro (LAW 4)."""
         self.unload_history.append(model_name)
+        payload = {"model": model_name, "prompt": "", "keep_alive": 0, "stream": False}
         if self._http_post_fn is not None:
-            self._http_post_fn(
-                f"{self.base_url}/api/generate",
-                {"model": model_name, "prompt": "", "keep_alive": 0, "stream": False},
-            )
+            self._http_post_fn(f"{self.base_url}/api/generate", payload)
+        elif self._client is not None or getattr(self, "_owns_client", False):
+            # Only issue live HTTP unload if daemon connection is active/configured
+            try:
+                self._post_json(f"{self.base_url}/api/generate", payload)
+            except Exception:
+                pass
         if self.active_model == model_name:
             self.active_model = None
 
@@ -277,7 +321,6 @@ class OllamaGenerator:
         """Generate a RAG summary from local Ollama using deterministic seed & temperature."""
         self.ensure_single_model_loaded(model_name)
         prompt = build_rag_prompt(query=query, passages=passages, mode=mode)
-        post_fn = self._http_post_fn or _default_http_post
         payload: dict[str, Any] = {
             "model": model_name,
             "prompt": prompt,
@@ -287,5 +330,8 @@ class OllamaGenerator:
                 "seed": self.seed,
             },
         }
-        result = post_fn(f"{self.base_url}/api/generate", payload)
+        if self._http_post_fn is not None:
+            result = self._http_post_fn(f"{self.base_url}/api/generate", payload)
+        else:
+            result = self._post_json(f"{self.base_url}/api/generate", payload)
         return str(result.get("response", "")).strip()

@@ -113,3 +113,65 @@ def test_ollama_generator_client_configuration_limits_and_timeout() -> None:
     finally:
         gen.close()
     assert client.is_closed
+
+
+def test_ollama_generator_generate_uses_persistent_client() -> None:
+    import json
+
+    import httpx
+
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"response": "Attention summary [C1]."})
+
+    mock_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://127.0.0.1:11434",
+    )
+    gen = OllamaGenerator(base_url="http://127.0.0.1:11434", client=mock_client)
+    passages = [
+        RetrievedPassage(
+            chunk=Chunk(chunk_id="C1", text="Attention mechanism details.", page_number=1),
+            score=0.9,
+        )
+    ]
+
+    res1 = gen.generate("llama3.1:8b-instruct-q4_K_M", "query 1", passages, PipelineMode.BASELINE_A)
+    res2 = gen.generate("llama3.1:8b-instruct-q4_K_M", "query 2", passages, PipelineMode.VERIFIED_B)
+
+    assert res1 == "Attention summary [C1]."
+    assert res2 == "Attention summary [C1]."
+    assert len(calls) == 2
+    assert calls[0].url.path == "/api/generate"
+    assert calls[1].url.path == "/api/generate"
+    body1 = json.loads(calls[0].content.decode("utf-8"))
+    assert body1["model"] == "llama3.1:8b-instruct-q4_K_M"
+    assert gen.get_client() is mock_client
+
+
+def test_ollama_generator_unload_uses_persistent_client() -> None:
+    import json
+
+    import httpx
+
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"done": True})
+
+    mock_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://127.0.0.1:11434",
+    )
+    gen = OllamaGenerator(base_url="http://127.0.0.1:11434", client=mock_client)
+    gen.ensure_single_model_loaded("llama3.1:8b-instruct-q4_K_M")
+    gen.unload_model("llama3.1:8b-instruct-q4_K_M")
+
+    assert len(calls) == 1
+    assert calls[0].url.path == "/api/generate"
+    data = json.loads(calls[0].content.decode("utf-8"))
+    assert data["keep_alive"] == 0
+    assert data["model"] == "llama3.1:8b-instruct-q4_K_M"
