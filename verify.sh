@@ -8,6 +8,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 USER_SITE="$(python3 -m site --user-site 2>/dev/null || true)"
+export OMP_NUM_THREADS=1
+export KMP_DUPLICATE_LIB_OK=TRUE
 export PYTHONPATH="${ROOT_DIR}/src:${USER_SITE}:${PYTHONPATH:-}"
 export PATH="${ROOT_DIR}/.venv/bin:${HOME}/Library/Python/3.9/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
 

@@ -176,9 +176,96 @@ def test_law5_telemetry_and_paired_ttest_completeness() -> None:
         StageLatencies(t_chunk=-0.01, t_retrieve=0.1, t_generate=1.0, t_verify=0.0)
 
     stat_res = run_paired_significance_test(
-        metric_name="Atomic FActScore",
-        baseline_scores=[0.60, 0.62, 0.58, 0.64, 0.61],
-        verified_scores=[0.92, 0.95, 0.90, 0.96, 0.94],
+        metric_name="Factual Precision (FActScore)",
+        baseline_scores=[60.0, 62.0, 58.0, 64.0, 61.0],
+        verified_scores=[92.0, 95.0, 90.0, 96.0, 94.0],
     )
-    assert stat_res.mean_delta > 0.30
+    assert stat_res.mean_delta > 30.0
+    assert stat_res.std_delta > 0.0
+    assert stat_res.pct_error_reduction > 80.0
+    assert stat_res.normality_pvalue is not None
     assert 0.0 <= stat_res.t_pvalue < 0.001
+
+
+@pytest.mark.law
+def test_law1_catches_narrative_citations_and_fabricated_years_from_manuscript_fig24() -> None:
+    """LAW 1: Gate must catch single/dual narrative citations (Fig. 2.4) and wrong years."""
+    chunks = [
+        Chunk(
+            chunk_id="C1",
+            text=(
+                "Quitaleg and Ramos (2025) evaluated 120 college modules "
+                "and found a 62% baseline error rate."
+            ),
+            page_number=1,
+        )
+    ]
+    draft = (
+        "Quitaleg and Ramos (2025) tested 120 modules, finding a 62% error rate [C1]. "
+        "Furthermore, Paningbatan (2024) proved that cloud GPUs eliminate all errors [C1]. "
+        "Quitaleg and Ramos (2019) reported identical findings in earlier trials [C1]."
+    )
+
+    report = verify_and_prune_summary(
+        generated_summary=draft,
+        retrieved_chunks=chunks,
+        entailment_threshold=0.70,
+        nli_scorer=lambda _p, _h: NLIScore(label=NLILabel.ENTAILMENT, entailment_prob=0.95),
+    )
+
+    assert (
+        report.verified_summary
+        == "Quitaleg and Ramos (2025) tested 120 modules, finding a 62% error rate [C1]."
+    )
+    assert [r.prune_reason for r in report.claim_results] == [
+        None,
+        "fabricated_author_citation",
+        "fabricated_year_citation",
+    ]
+
+
+@pytest.mark.law
+def test_law1_and_law5_ground_truth_oracle_and_chapter3_equations() -> None:
+    """LAW 1 & LAW 5: Ground-truth oracle enables real TP/TN/FP/FN and Chapter 3 equations."""
+    chunks = [
+        Chunk(
+            chunk_id="C1",
+            text="Vaswani et al. (2017) introduced the Transformer architecture.",
+            page_number=1,
+        )
+    ]
+    # 4 claims in Condition B draft:
+    # 1. Gate keeps + Ground truth TRUE  -> TP
+    # 2. Gate prunes + Ground truth FALSE -> TN
+    # 3. Gate keeps + Ground truth FALSE -> FP (subtle NLI false positive caught by oracle)
+    # 4. Gate prunes (missing [C1]) + Ground truth TRUE -> FN (valid fact over-pruned by gate)
+    draft = (
+        "Vaswani et al. (2017) introduced the Transformer architecture [C1]. "
+        "Paningbatan (2024) proved cloud GPUs eliminate all errors [C1]. "
+        "Vaswani et al. (2017) trained exclusively on 100 billion audio tokens [C1]. "
+        "Attention mechanisms compute token representations without recurrence."
+    )
+
+    def imperfect_nli(_premise: str, _hypothesis: str) -> NLIScore:
+        return NLIScore(label=NLILabel.ENTAILMENT, entailment_prob=0.90)
+
+    def ground_truth_oracle(claim: str) -> bool:
+        return "introduced the Transformer architecture" in claim or "without recurrence" in claim
+
+    report = verify_and_prune_summary(
+        generated_summary=draft,
+        retrieved_chunks=chunks,
+        entailment_threshold=0.70,
+        nli_scorer=imperfect_nli,
+        ground_truth_fn=ground_truth_oracle,
+    )
+
+    assert report.confusion_matrix == ConfusionMatrix(tp=1, tn=1, fp=1, fn=1)
+    # Chapter 3 p. 53: Entailment Consistency = (TP + TN) / (TP + TN + FP + FN) = 2 / 4 = 0.5
+    assert report.confusion_matrix.entailment_consistency == pytest.approx(0.5)
+    # Chapter 3 p. 52: FActScore = supported surviving / total surviving = 1 / 2 = 0.5
+    assert report.atomic_factscore == pytest.approx(0.5)
+    # Chapter 3 p. 53: Citation Precision = 1 entailed citation / 2 surviving citations = 0.5
+    assert report.citation_precision == pytest.approx(0.5)
+    # Chapter 3 p. 53: Citation Recall = 1 entailed cited claim / (tp + fp + fn = 3) = 1/3
+    assert report.citation_recall == pytest.approx(1.0 / 3.0)

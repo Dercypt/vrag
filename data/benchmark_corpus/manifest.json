@@ -1,0 +1,167 @@
+{
+  "corpus_name": "Thesis Writing 1 Controlled Academic PDF Hallucination Benchmark",
+  "version": "1.0.0",
+  "documents": [
+    {
+      "pdf_filename": "01_semantic_segmentation.pdf",
+      "title": "Dynamic Semantic Document Segmentation for Academic RAG",
+      "pages": [
+        "Brådland et al. (2025) introduced the HOPE metric to evaluate how text chunking preserves semantic coherence and topic independence across academic documents. Their empirical benchmarks demonstrate that rigid 256-token fixed-size splitting slices academic arguments across boundaries and lowers downstream answer accuracy by 19%. Wang et al. (2025) resolved boundary slicing by grouping adjacent sentences using cosine similarity thresholds against contextual embeddings.",
+        "Duarte et al. (2024) developed LumberChunker to detect narrative and topic shifts dynamically, producing self-contained variable-length passages for dense retrievers. Zhao et al. (2025) further confirmed via Mixtures of Text Chunking Learners that dynamic sentence-boundary segmentation operates with low latency on standard institutional CPU hardware."
+      ],
+      "valid_citations": [
+        ["Brådland", "2025"],
+        ["Wang", "2025"],
+        ["Duarte", "2024"],
+        ["Zhao", "2025"]
+      ],
+      "supported_claims": [
+        "Brådland et al. (2025) introduced the HOPE metric to evaluate how text chunking preserves semantic coherence and topic independence across academic documents.",
+        "Their empirical benchmarks demonstrate that rigid 256-token fixed-size splitting slices academic arguments across boundaries and lowers downstream answer accuracy by 19%.",
+        "Wang et al. (2025) resolved boundary slicing by grouping adjacent sentences using cosine similarity thresholds against contextual embeddings.",
+        "Duarte et al. (2024) developed LumberChunker to detect narrative and topic shifts dynamically, producing self-contained variable-length passages for dense retrievers.",
+        "Zhao et al. (2025) further confirmed via Mixtures of Text Chunking Learners that dynamic sentence-boundary segmentation operates with low latency on standard institutional CPU hardware."
+      ],
+      "intrinsic_traps": [
+        "Brådland et al. (2025) proved that 256-token fixed-size splitting increases downstream answer accuracy by 19%.",
+        "Zhao et al. (2025) showed that dynamic sentence-boundary segmentation requires enterprise GPU clusters and freezes CPU hardware."
+      ],
+      "extrinsic_traps": [
+        "Paningbatan (2024) proved that cloud GPUs eliminate all chunking errors.",
+        "FabricatedAuthor (2025) replaced vector embeddings with quantum annealers."
+      ],
+      "prompts": [
+        {
+          "item_id": "seg_01",
+          "benchmark_source": "TRUE / SummEdits",
+          "query": "Summarize how fixed-size chunking affects RAG accuracy and how dynamic semantic chunking addresses this problem."
+        },
+        {
+          "item_id": "seg_02",
+          "benchmark_source": "Factcheck-Bench",
+          "query": "Describe the specific contributions of LumberChunker and Mixtures of Text Chunking Learners for local hardware."
+        }
+      ]
+    },
+    {
+      "pdf_filename": "02_nli_citation_auditing.pdf",
+      "title": "Post-Generation NLI Entailment and Citation Verification",
+      "pages": [
+        "Honovich et al. (2022) established the TRUE benchmark across 11 datasets and proved that binary Natural Language Inference entailment scoring outperforms ROUGE and BLEU at detecting factual inconsistencies. Min et al. (2023) introduced FActScore to decompose long-form generations into atomic claims and compute the exact proportion of supported facts.",
+        "Chern et al. (2023) demonstrated via FacTool that language models frequently fabricate nonexistent paper titles, author surnames, and wrong publication years during scientific literature synthesis. Qian et al. (2025) presented VeriCite, a three-stage framework that verifies each statement against its cited passage via NLI and prunes unentailed claims before synthesis."
+      ],
+      "valid_citations": [
+        ["Honovich", "2022"],
+        ["Min", "2023"],
+        ["Chern", "2023"],
+        ["Qian", "2025"]
+      ],
+      "supported_claims": [
+        "Honovich et al. (2022) established the TRUE benchmark across 11 datasets and proved that binary Natural Language Inference entailment scoring outperforms ROUGE and BLEU at detecting factual inconsistencies.",
+        "Min et al. (2023) introduced FActScore to decompose long-form generations into atomic claims and compute the exact proportion of supported facts.",
+        "Chern et al. (2023) demonstrated via FacTool that language models frequently fabricate nonexistent paper titles, author surnames, and wrong publication years during scientific literature synthesis.",
+        "Qian et al. (2025) presented VeriCite, a three-stage framework that verifies each statement against its cited passage via NLI and prunes unentailed claims before synthesis."
+      ],
+      "intrinsic_traps": [
+        "Honovich et al. (2022) proved that ROUGE and BLEU outperform NLI entailment across all 11 datasets.",
+        "Qian et al. (2025) retained all unentailed statements in VeriCite without pruning."
+      ],
+      "extrinsic_traps": [
+        "FakeAuthor (2024) introduced recurrent citation gates for cloud APIs.",
+        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding."
+      ],
+      "prompts": [
+        {
+          "item_id": "nli_01",
+          "benchmark_source": "TRUE / Factcheck-Bench",
+          "query": "Explain why NLI entailment and atomic FActScore decomposition are preferred over word-overlap metrics."
+        },
+        {
+          "item_id": "nli_02",
+          "benchmark_source": "HalluLens / VeriCite",
+          "query": "Summarize how FacTool and VeriCite address fabricated academic citations in RAG outputs."
+        }
+      ]
+    },
+    {
+      "pdf_filename": "03_lightweight_llm_hallucinations.pdf",
+      "title": "Calibration and Hallucination Rates in 7B to 9B Open-Source LLMs",
+      "pages": [
+        "Ji et al. (2023) categorized natural language generation failures into intrinsic hallucinations that contradict source text and extrinsic hallucinations that invent unverifiable claims. Kadavath et al. (2022) showed that smaller parameter language models are poorly calibrated at self-evaluation and exhibit high surface confidence when stating falsehoods.",
+        "Bang et al. (2025) evaluated 7B to 8B open-weight models including Llama-3.1-8B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%. Chuang et al. (2024) explained via Lookback Lens that attention gradually shifts away from source context toward newly generated tokens during long-form summarization."
+      ],
+      "valid_citations": [
+        ["Ji", "2023"],
+        ["Kadavath", "2022"],
+        ["Bang", "2025"],
+        ["Chuang", "2024"]
+      ],
+      "supported_claims": [
+        "Ji et al. (2023) categorized natural language generation failures into intrinsic hallucinations that contradict source text and extrinsic hallucinations that invent unverifiable claims.",
+        "Kadavath et al. (2022) showed that smaller parameter language models are poorly calibrated at self-evaluation and exhibit high surface confidence when stating falsehoods.",
+        "Bang et al. (2025) evaluated 7B to 8B open-weight models including Llama-3.1-8B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%.",
+        "Chuang et al. (2024) explained via Lookback Lens that attention gradually shifts away from source context toward newly generated tokens during long-form summarization."
+      ],
+      "intrinsic_traps": [
+        "Bang et al. (2025) recorded baseline hallucination rates below 5% on 7B to 8B open-weight models.",
+        "Kadavath et al. (2022) proved that smaller models are perfectly calibrated at self-policing falsehoods."
+      ],
+      "extrinsic_traps": [
+        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding.",
+        "Smithson (2026) trained 700B commercial models on synthetic student essays."
+      ],
+      "prompts": [
+        {
+          "item_id": "hal_01",
+          "benchmark_source": "HalluLens",
+          "query": "Compare intrinsic and extrinsic hallucinations and report the empirical error rates observed on 7B to 8B models."
+        },
+        {
+          "item_id": "hal_02",
+          "benchmark_source": "SummEdits",
+          "query": "Why do lightweight 7B to 9B models drift away from uploaded PDFs during long-form summarization?"
+        }
+      ]
+    },
+    {
+      "pdf_filename": "04_institutional_hardware_rag.pdf",
+      "title": "Black-Box Dense Retrieval and Institutional Hardware Efficiency",
+      "pages": [
+        "Izacard et al. (2022) demonstrated with Atlas that offloading factual storage to a dense retrieval index enables an 11B model to outperform an unguided 540B model on knowledge-intensive tasks. Shi et al. (2023) introduced REPLUG to prepend retrieved passages directly to frozen black-box language models without costly weight retraining.",
+        "Mao et al. (2024) developed FIT-RAG to prune irrelevant prompt tokens and cut memory consumption in half while improving factual accuracy on constrained hardware. Peng et al. (2025) noted that constructing entity-relationship knowledge graphs in GraphRAG incurs heavy LLM token and indexing latency compared to flat dense vector indexing."
+      ],
+      "valid_citations": [
+        ["Izacard", "2022"],
+        ["Shi", "2023"],
+        ["Mao", "2024"],
+        ["Peng", "2025"]
+      ],
+      "supported_claims": [
+        "Izacard et al. (2022) demonstrated with Atlas that offloading factual storage to a dense retrieval index enables an 11B model to outperform an unguided 540B model on knowledge-intensive tasks.",
+        "Shi et al. (2023) introduced REPLUG to prepend retrieved passages directly to frozen black-box language models without costly weight retraining.",
+        "Mao et al. (2024) developed FIT-RAG to prune irrelevant prompt tokens and cut memory consumption in half while improving factual accuracy on constrained hardware.",
+        "Peng et al. (2025) noted that constructing entity-relationship knowledge graphs in GraphRAG incurs heavy LLM token and indexing latency compared to flat dense vector indexing."
+      ],
+      "intrinsic_traps": [
+        "Peng et al. (2025) showed that GraphRAG indexing uses fewer tokens and lower latency than flat vector indexing.",
+        "Shi et al. (2023) required full neural weight fine-tuning in REPLUG."
+      ],
+      "extrinsic_traps": [
+        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding.",
+        "Paningbatan (2024) deployed multi-agent enterprise clusters in all classrooms."
+      ],
+      "prompts": [
+        {
+          "item_id": "hw_01",
+          "benchmark_source": "TRUE",
+          "query": "Summarize how Atlas, REPLUG, and FIT-RAG enable lightweight black-box models to run accurately on local hardware."
+        },
+        {
+          "item_id": "hw_02",
+          "benchmark_source": "Factcheck-Bench",
+          "query": "Explain the computational tradeoffs between GraphRAG and dense vector retrieval on institutional computers."
+        }
+      ]
+    }
+  ]
+}

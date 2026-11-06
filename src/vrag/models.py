@@ -82,6 +82,16 @@ class NLIScore:
 
 
 @dataclass(frozen=True)
+class GroundTruthSpec:
+    """Curated ground-truth claims, traps, and valid citations for benchmark evaluation."""
+
+    supported_claims: tuple[str, ...] = ()
+    intrinsic_traps: tuple[str, ...] = ()
+    extrinsic_traps: tuple[str, ...] = ()
+    valid_citations: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class ClaimVerificationResult:
     """Audit record for a single atomic sentence evaluated in Condition B."""
 
@@ -94,6 +104,8 @@ class ClaimVerificationResult:
     author_exists: bool
     survived: bool
     prune_reason: str | None = None
+    extracted_years: tuple[str, ...] = ()
+    year_exists: bool = True
 
 
 @dataclass(frozen=True)
@@ -111,9 +123,9 @@ class ConfusionMatrix:
 
     @property
     def entailment_consistency(self) -> float:
-        """Proportion of surviving claims that are truly entailed: TP / (TP + FP)."""
-        denom = self.tp + self.fp
-        return self.tp / denom if denom > 0 else 1.0
+        """Chapter 3 (p. 53) classification accuracy: (TP + TN) / (TP + TN + FP + FN)."""
+        denom = self.total
+        return (self.tp + self.tn) / denom if denom > 0 else 0.0
 
 
 @dataclass(frozen=True)
@@ -126,6 +138,8 @@ class VerificationReport:
     atomic_factscore: float
     citation_precision: float
     citation_recall: float
+    intrinsic_hallucinations: int = 0
+    extrinsic_hallucinations: int = 0
 
 
 @dataclass(frozen=True)
@@ -170,11 +184,31 @@ class TrialTelemetry:
     peak_ram_mb: float
     output_summary: str
     claim_audit: tuple[ClaimVerificationResult, ...] = field(default_factory=tuple)
+    intrinsic_hallucinations: int = 0
+    extrinsic_hallucinations: int = 0
 
     @property
     def factual_precision_pct(self) -> float:
         """Metric 1: Factual Precision (FActScore) in percentage (0-100%)."""
         return self.atomic_factscore * 100.0
+
+    @property
+    def hallucination_error_rate_pct(self) -> float:
+        """Overall hallucination error rate among surviving output claims (0-100%)."""
+        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
+        return (self.confusion_matrix.fp / denom) * 100.0 if denom > 0 else 0.0
+
+    @property
+    def intrinsic_hallucination_rate_pct(self) -> float:
+        """Intrinsic faithfulness contradiction rate among surviving output claims (0-100%)."""
+        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
+        return (self.intrinsic_hallucinations / denom) * 100.0 if denom > 0 else 0.0
+
+    @property
+    def extrinsic_hallucination_rate_pct(self) -> float:
+        """Extrinsic factuality/citation fabrication rate among surviving output claims (0-100%)."""
+        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
+        return (self.extrinsic_hallucinations / denom) * 100.0 if denom > 0 else 0.0
 
     @property
     def entailment_consistency_pct(self) -> float:

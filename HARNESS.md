@@ -61,7 +61,8 @@ The entire system is designed for **100% offline execution** (LAW 2):
 | `src/vrag/chunker.py` | `fixed_window_chunk(pdf_text, token_size=256)` & `semantic_cosine_chunk(pdf_text, similarity_threshold=0.75)` | LAW 3 |
 | `src/vrag/retriever.py` | Local FAISS index construction and top-$k$ retrieval with `[Chunk_ID]` & page metadata | LAW 2, LAW 3 |
 | `src/vrag/generator.py` | Offline Ollama HTTP client (`http://localhost:11434`), bounded citation prompts, sequential `keep_alive=0` unload | LAW 2, LAW 3, LAW 4 |
-| `src/vrag/verifier.py` | `pysbd` sentence splitting, regex citation & entity check, `cross-encoder/nli-deberta-v3-small` pruning gate | LAW 1, LAW 2 |
-| `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), 4 core metrics, `scipy.stats.ttest_rel` | LAW 3, LAW 4, LAW 5 |
-| `src/vrag/cli.py` | CLI entrypoint for comparative tables & CSV/JSON export | LAW 5 |
+| `src/vrag/verifier.py` | `pysbd` + atomic claim decomposition, parenthetical & narrative `(Author, Year)` check, `cross-encoder/nli-deberta-v3-small` pruning gate, ground-truth oracle support | LAW 1, LAW 2 |
+| `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), Chapter 3 metrics & intrinsic/extrinsic rates, SD, % error reduction, `ttest_rel` & `wilcoxon` | LAW 3, LAW 4, LAW 5 |
+| `src/vrag/corpus.py` | Thesis Writing 1 curated digital PDF benchmark corpus (`data/benchmark_corpus/`) & deterministic ground-truth claim oracle | LAW 1, LAW 3, LAW 5 |
+| `src/vrag/cli.py` | CLI entrypoint (`--pdf`, `--corpus`, `--demo`, `--doctor`) for comparative tables & CSV/JSON export | LAW 5 |
 | `src/vrag/ui.py` | Minimal Streamlit UI with light/dark theme toggle, custom 4-metric cards, side-by-side output comparison, and atomic claim verification logs | LAW 1, LAW 5 |

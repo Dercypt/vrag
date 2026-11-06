@@ -13,10 +13,10 @@
 
 | Metric | Unit | Description |
 | :--- | :---: | :--- |
-| **1. Factual Precision (FActScore)** | `%` | Percentage of generated atomic claims actually supported by the uploaded PDF. |
-| **2. Entailment Consistency (NLI Score)** | `%` | Accuracy of the verification gate in classifying sentences as supported vs. hallucinated (`TP` vs. `FP`). |
-| **3. Citation Accuracy (Precision/Recall)** | `%` | Whether the model cites real authors and chunk/page numbers from the text without inventing fake ones. |
-| **4. Computational Latency** | `s` | End-to-end execution time (in seconds) proving local efficiency on a 2019 MacBook Pro without freezing. |
+| **1. Factual Precision (FActScore)** | `%` | Percentage of surviving atomic claims actually supported by the uploaded PDF. |
+| **2. Entailment Consistency (NLI Score)** | `%` | Classification accuracy across retained and pruned claims: `(TP + TN) / (TP + TN + FP + FN)`. |
+| **3. Citation Accuracy (Precision/Recall)** | `%` | F1 of Citation Precision (entailed citations / generated citations) and Citation Recall (entailed cited claims / required claims), checking chunk IDs, author surnames, and publication years. |
+| **4. Computational Latency** | `s` | End-to-end execution time (`t_chunk + t_retrieve + t_generate + t_verify`) proving local efficiency on institutional hardware. |
 
 ---
 
@@ -59,7 +59,12 @@ PYTHONPATH=src python3 -m vrag.cli --demo --output-dir outputs/demo
 PYTHONPATH=src python3 -m vrag.cli --pdf path/to/student_paper.pdf --output-dir outputs/run1
 ```
 
-### 6. Environment Health & Ollama Diagnostics
+### 6. Run the Curated Thesis Writing 1 Benchmark Corpus
+```bash
+PYTHONPATH=src python3 -m vrag.cli --corpus data/benchmark_corpus --output-dir outputs/thesis_corpus
+```
+
+### 7. Environment Health & Ollama Diagnostics
 ```bash
 PYTHONPATH=src python3 -m vrag.cli --doctor
 ```

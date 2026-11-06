@@ -163,6 +163,7 @@ def build_rag_prompt(
         return (
             "You are a factual academic summarization assistant. "
             "Use ONLY the provided context chunks below. "
+            "Do not extrapolate or invent external facts. "
             "Every single sentence MUST end with at least one inline chunk citation "
             "formatted as [C1], [C2], etc., and preserve exact (Author, Year) citations.\n\n"
             f"CONTEXT:\n{context_blocks}\n\n"
@@ -170,7 +171,9 @@ def build_rag_prompt(
             "VERIFIABLE SUMMARY:"
         )
     return (
-        "Summarize the following context to answer the query concisely.\n\n"
+        "Summarize the following context to answer the query concisely. "
+        "Cite supporting context chunks inline as [C1], [C2], etc., and include "
+        "relevant (Author, Year) citations.\n\n"
         f"CONTEXT:\n{context_blocks}\n\n"
         f"QUERY: {query}\n\n"
         "SUMMARY:"
