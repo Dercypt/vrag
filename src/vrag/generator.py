@@ -52,14 +52,24 @@ def validate_offline_ollama_url(base_url: str) -> str:
     return base_url.rstrip("/")
 
 
-def check_ollama_status(base_url: str = "http://localhost:11434", timeout: float = 1.5) -> bool:
+def check_ollama_status(
+    base_url: str = "http://localhost:11434",
+    timeout: float = 1.5,
+    client: httpx.Client | None = None,
+) -> bool:
     """Enforce LAW 2 and check whether the local Ollama daemon is reachable."""
     clean_url = validate_offline_ollama_url(base_url)
     try:
         import httpx
 
-        with httpx.Client(timeout=timeout, trust_env=False) as client:
-            resp = client.get(f"{clean_url}/api/tags")
+        timeout_cfg = httpx.Timeout(timeout, connect=min(timeout, 0.75))
+        if client is not None:
+            resp = client.get(f"{clean_url}/api/tags", timeout=timeout_cfg)
+            return resp.status_code == 200
+
+        transport = httpx.HTTPTransport(retries=1)
+        with httpx.Client(timeout=timeout_cfg, transport=transport, trust_env=False) as c:
+            resp = c.get(f"{clean_url}/api/tags")
             return resp.status_code == 200
     except Exception:
         return False
@@ -69,6 +79,7 @@ def diagnose_ollama(
     base_url: str = "http://localhost:11434",
     timeout: float = 1.5,
     http_get_fn: HttpGetFn | None = None,
+    client: httpx.Client | None = None,
 ) -> OllamaHealthReport:
     """Perform a comprehensive diagnostic check of the local Ollama service.
 
@@ -83,10 +94,17 @@ def diagnose_ollama(
         else:
             import httpx
 
-            with httpx.Client(timeout=timeout, trust_env=False) as client:
-                resp = client.get(f"{clean_url}/api/tags")
+            timeout_cfg = httpx.Timeout(timeout, connect=min(timeout, 0.75))
+            if client is not None:
+                resp = client.get(f"{clean_url}/api/tags", timeout=timeout_cfg)
                 resp.raise_for_status()
                 data = resp.json()
+            else:
+                transport = httpx.HTTPTransport(retries=1)
+                with httpx.Client(timeout=timeout_cfg, transport=transport, trust_env=False) as c:
+                    resp = c.get(f"{clean_url}/api/tags")
+                    resp.raise_for_status()
+                    data = resp.json()
 
         raw_models = data.get("models", [])
         installed_names = tuple(
