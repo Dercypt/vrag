@@ -10,8 +10,10 @@ from vrag.cli import (
     format_metric_value,
     main,
     render_comparison_table,
+    run_doctor_check,
     run_synthetic_demo_benchmark,
 )
+from vrag.generator import OllamaHealthReport
 
 
 def test_format_metric_value_formats_percentage_and_seconds() -> None:
@@ -58,3 +60,35 @@ def test_cli_main_pdf_input_runs_simulation_when_ollama_offline(tmp_path: Path) 
     assert exit_code == 0
     assert (tmp_path / "telemetry.csv").exists()
     assert (tmp_path / "summary.json").exists()
+
+
+def test_run_doctor_check_offline_returns_exit_code_1() -> None:
+    offline_report = OllamaHealthReport(
+        is_online=False,
+        base_url="http://localhost:11434",
+        installed_models=(),
+        missing_approved_models=("llama3.1:8b-instruct-q4_K_M",),
+        message="Local Ollama daemon is unreachable.",
+        troubleshooting_steps=("Install Ollama: brew install --cask ollama",),
+    )
+    code = run_doctor_check(report_override=offline_report)
+    assert code == 1
+
+
+def test_run_doctor_check_online_ready_returns_0() -> None:
+    online_report = OllamaHealthReport(
+        is_online=True,
+        base_url="http://localhost:11434",
+        installed_models=("llama3.1:8b-instruct-q4_K_M",),
+        missing_approved_models=(),
+        message="Ready",
+        troubleshooting_steps=(),
+    )
+    code = run_doctor_check(report_override=online_report)
+    assert code == 0
+
+
+def test_cli_main_doctor_flag() -> None:
+    # Running --doctor against local environment
+    exit_code = main(["--doctor"])
+    assert exit_code in (0, 1)
