@@ -45,7 +45,7 @@ pip install -e ".[dev,ui]"
 ### Offline Execution & Internet Connectivity
 
 The entire system is designed for **100% offline execution** (LAW 2):
-- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet. Features proactive daemon status indicators (`🟢 Online` / `⚠️ Offline`).
+- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet. Features proactive daemon status indicators (`🟢 Online` / `⚠️ Offline`), light/dark theme toggle, custom metric cards with directional delta chips, side-by-side condition output comparison panels, and interactive claim verification logs.
 - **Deterministic Simulation Mode (Fast Offline)**: Runs completely without internet or external model downloads, using purely local hash embeddings and mock verification.
 - **Automatic Fallback on Connection Refusal**: If local Ollama is offline or returns `[Errno 61] Connection refused` while running the benchmark, execution automatically falls back to Deterministic Simulation Mode with a diagnostic notice rather than aborting.
 - **Live Ollama + Local HF Mode**: Once Ollama models are pulled and HuggingFace weights (`all-MiniLM-L6-v2`, `cross-encoder/nli-deberta-v3-small`) are cached in `~/.cache/huggingface`, execution runs 100% locally on CPU/loopback with zero internet connectivity.
@@ -63,4 +63,4 @@ The entire system is designed for **100% offline execution** (LAW 2):
 | `src/vrag/verifier.py` | `pysbd` sentence splitting, regex citation & entity check, `cross-encoder/nli-deberta-v3-small` pruning gate | LAW 1, LAW 2 |
 | `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), 4 core metrics, `scipy.stats.ttest_rel` | LAW 3, LAW 4, LAW 5 |
 | `src/vrag/cli.py` | CLI entrypoint for comparative tables & CSV/JSON export | LAW 5 |
-| `src/vrag/ui.py` | Lightweight Streamlit UI for uploading a student PDF and inspecting the 4 core comparative metrics & pruned claims | LAW 1, LAW 5 |
+| `src/vrag/ui.py` | Minimal Streamlit UI with light/dark theme toggle, custom 4-metric cards, side-by-side output comparison, and atomic claim verification logs | LAW 1, LAW 5 |
