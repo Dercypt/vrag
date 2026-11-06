@@ -143,18 +143,52 @@ def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def is_connection_refused_error(err: Exception) -> bool:
+    """Return True if exception indicates unreachable local Ollama daemon or connection refusal."""
+    import errno
+
+    if isinstance(err, (ConnectionRefusedError, ConnectionResetError)):
+        return True
+    if isinstance(err, OSError) and err.errno in (errno.ECONNREFUSED, errno.ECONNRESET):
+        return True
+
+    err_type_name = type(err).__name__
+    if "ConnectError" in err_type_name or "ConnectTimeout" in err_type_name:
+        return True
+
+    cause = getattr(err, "__cause__", None) or getattr(err, "__context__", None)
+    if cause is not None and isinstance(cause, Exception) and is_connection_refused_error(cause):
+        return True
+
+    msg = str(err).lower()
+    return (
+        "connection refused" in msg
+        or "errno 61" in msg
+        or "errno 111" in msg
+        or "failed to establish a new connection" in msg
+        or "all connection attempts failed" in msg
+    )
+
+
 def execute_benchmark_safely(
     pdf_bytes: bytes,
     pdf_name: str,
     prompts: tuple[tuple[str, str], ...],
     models: tuple[str, ...],
     simulation_mode: bool,
+    auto_fallback: bool = True,
 ) -> tuple[
     list[tuple[TrialTelemetry, TrialTelemetry]] | None,
     list[PairedStatisticalResult] | None,
     str | None,
 ]:
-    """Execute student PDF benchmark with robust exception catching and diagnostic message."""
+    """Execute student PDF benchmark with robust exception catching and diagnostic message.
+
+    If live execution fails due to an unreachable local Ollama daemon or connection refusal,
+    and auto_fallback is enabled, execution automatically falls back to Deterministic Simulation
+    Mode (Fast Offline) and returns the completed benchmark pairs, statistics, and an informative
+    warning notice instead of terminating with an error.
+    """
     try:
         pairs, stats = run_student_pdf_benchmark(
             pdf_bytes=pdf_bytes,
@@ -165,6 +199,25 @@ def execute_benchmark_safely(
         )
         return pairs, stats, None
     except Exception as err:
+        if not simulation_mode and auto_fallback and is_connection_refused_error(err):
+            try:
+                fallback_pairs, fallback_stats = run_student_pdf_benchmark(
+                    pdf_bytes=pdf_bytes,
+                    pdf_name=pdf_name,
+                    prompts=prompts,
+                    models=models,
+                    simulation_mode=True,
+                )
+                warning_msg = (
+                    f"Notice: Local Ollama daemon is unreachable ({err}). "
+                    "Benchmark automatically executed in "
+                    "Deterministic Simulation Mode (Fast Offline) "
+                    "so that your comparative evaluation could complete without interruption."
+                )
+                return fallback_pairs, fallback_stats, warning_msg
+            except Exception as fallback_err:
+                err = fallback_err
+
         return (
             None,
             None,
@@ -205,11 +258,21 @@ def render_streamlit_app() -> None:  # pragma: no cover
             default=[APPROVED_MODELS[0]],
         )
         ollama_online = check_ollama_status()
+        if ollama_online:
+            st.success("🟢 Local Ollama daemon is online (http://localhost:11434)")
+        else:
+            st.warning("⚠️ Local Ollama daemon is offline (http://localhost:11434)")
+
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
             value=not ollama_online,
             help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
         )
+        if not ollama_online and not sim_mode:
+            st.info(
+                "💡 Notice: Ollama daemon is offline. Running live mode will automatically "
+                "fall back to Simulation Mode if connection is refused."
+            )
         custom_query = st.text_input(
             "Optional Custom Prompt (leave blank to run 4-prompt benchmark suite)",
             value="",
@@ -253,9 +316,12 @@ def render_streamlit_app() -> None:  # pragma: no cover
             simulation_mode=sim_mode,
         )
 
-    if error_msg or pairs is None or stats is None:
+    if pairs is None or stats is None:
         st.error(error_msg or "Benchmark execution failed.")
         return
+
+    if error_msg:
+        st.warning(error_msg)
 
     st.subheader("1. Core 4-Metric Comparative Results (Base RAG vs. Verification-Driven RAG)")
     cols = st.columns(4)

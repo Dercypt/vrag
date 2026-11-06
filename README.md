@@ -65,4 +65,5 @@ PYTHONPATH=src python3 -m vrag.cli --pdf path/to/student_paper.pdf --output-dir 
 `vrag` and the Streamlit UI operate strictly under **LAW 2 (Offline & Loopback Execution)**:
 - **No Internet Required**: Streamlit binds to local loopback (`localhost:8501`).
 - **Deterministic Simulation Mode (Fast Offline)**: Runs immediately with no network access, zero downloads, and deterministic offline mock telemetry.
+- **Resilient Ollama Auto-Fallback**: If the local Ollama daemon is unreachable or returns `[Errno 61] Connection refused`, the UI and CLI automatically fall back to Deterministic Simulation Mode with an informative notification so benchmark execution never crashes.
 - **Live Local LLM Mode**: Uses the local Ollama daemon (`http://localhost:11434`) and local HuggingFace cache (`~/.cache/huggingface`), requiring zero outbound internet once local weights are present.

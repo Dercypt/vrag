@@ -190,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
     pdf_path = Path(args.pdf)
     pdf_bytes = pdf_path.read_bytes()
     ollama_live = check_ollama_status()
+    if not ollama_live:
+        console.print(
+            "[yellow]Notice: Local Ollama daemon unreachable at http://localhost:11434. "
+            "Running benchmark in Deterministic Simulation Mode (Fast Offline).[/yellow]"
+        )
     pairs, stats = run_student_pdf_benchmark(
         pdf_bytes=pdf_bytes,
         pdf_name=pdf_path.name,
