@@ -1,4 +1,8 @@
-"""Lightweight Streamlit UI for Student PDF Benchmarking across the 4 Core Thesis Metrics."""
+"""Minimal, modern Streamlit UI for Student PDF Benchmarking across the 4 Core Thesis Metrics.
+
+Features a light/dark theme toggle, custom-rendered metric cards and tables, and a quiet
+typographic system (Inter). All benchmark logic and row-builder helpers are unchanged.
+"""
 
 from __future__ import annotations
 
@@ -853,34 +857,52 @@ def render_streamlit_app() -> None:  # pragma: no cover
     import streamlit as st
 
     st.set_page_config(
-        page_title="vrag — Verification-Driven RAG Benchmark",
+        page_title="vrag · Verification-Driven RAG Benchmark",
         layout="wide",
-    )
-    st.title("Verification-Driven RAG vs. Base RAG — Comparative Benchmark")
-    st.caption(
-        "Thesis Harness: Evaluating Factual Precision (FActScore %), Entailment Consistency "
-        "(NLI Score %), Citation Accuracy (%), and Computational Latency (s)."
+        initial_sidebar_state="expanded",
     )
 
     with st.sidebar:
-        st.header("1. Student PDF Input")
+        st.markdown(
+            '<div class="vr-side-title">vrag</div>'
+            '<div class="vr-side-sub">Verification-driven RAG benchmark</div>',
+            unsafe_allow_html=True,
+        )
+        dark_mode = st.toggle("Dark mode", value=False, key="vr_dark_mode")
+
+    st.markdown(build_theme_css(dark_mode), unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.divider()
+        st.markdown('<div class="vr-label">Document</div>', unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "Upload Student / Academic PDF",
+            "Student or academic paper",
             type=["pdf", "txt"],
             help="Upload a student paper PDF to run the 4-metric comparative benchmark.",
+            label_visibility="collapsed",
         )
 
-        st.header("2. Benchmark Configuration")
+        st.markdown('<div class="vr-label">Models</div>', unsafe_allow_html=True)
         selected_models = st.multiselect(
-            "Local Ollama Models (Sequential Execution)",
+            "Local Ollama models (run sequentially)",
             options=list(APPROVED_MODELS),
             default=[APPROVED_MODELS[0]],
+            label_visibility="collapsed",
         )
+
         ollama_online = check_ollama_status()
         if ollama_online:
-            st.success("🟢 Local Ollama daemon is online (http://localhost:11434)")
+            st.markdown(
+                '<div class="vr-pill ok">'
+                '<span class="dot"></span>Ollama online · localhost:11434</div>',
+                unsafe_allow_html=True,
+            )
         else:
-            st.warning("⚠️ Local Ollama daemon is offline (http://localhost:11434)")
+            st.markdown(
+                '<div class="vr-pill off">'
+                '<span class="dot"></span>Ollama offline · localhost:11434</div>',
+                unsafe_allow_html=True,
+            )
 
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
@@ -888,20 +910,36 @@ def render_streamlit_app() -> None:  # pragma: no cover
             help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
         )
         if not ollama_online and not sim_mode:
-            st.info(
-                "💡 Notice: Ollama daemon is offline. Running live mode will automatically "
-                "fall back to Simulation Mode if connection is refused."
+            st.caption(
+                "Ollama is offline. Live runs will fall back to simulation if the connection "
+                "is refused."
             )
+
+        st.markdown('<div class="vr-label">Prompt</div>', unsafe_allow_html=True)
         custom_query = st.text_input(
-            "Optional Custom Prompt (leave blank to run 4-prompt benchmark suite)",
+            "Custom prompt",
             value="",
+            placeholder="Leave blank to run the 4-prompt suite",
+            label_visibility="collapsed",
         )
-        run_btn = st.button("Run Comparative Benchmark", type="primary")
+        st.write("")
+        run_btn = st.button("Run comparative benchmark", type="primary")
+
+    st.markdown(
+        '<div class="vr-hero"><h1>Verification-driven RAG vs. base RAG</h1>'
+        "<p>Compare factual precision, entailment consistency, citation accuracy, and "
+        "latency on your own paper, with every claim audited sentence by sentence.</p></div>",
+        unsafe_allow_html=True,
+    )
 
     if not run_btn:
-        st.info(
-            "Upload a student PDF in the sidebar (or use the built-in sample paper) and click "
-            "**Run Comparative Benchmark** to compare Base RAG vs. Verification-Driven RAG."
+        st.markdown(
+            '<div class="vr-empty"><h3>Ready when you are</h3>'
+            "<p>Upload a student PDF in the sidebar, or skip the upload to use the built-in "
+            "sample paper.</p>"
+            "<p>Choose your models, then select <b>Run comparative benchmark</b> to see how "
+            "base RAG and verification-driven RAG compare.</p></div>",
+            unsafe_allow_html=True,
         )
         return
 
@@ -936,56 +974,57 @@ def render_streamlit_app() -> None:  # pragma: no cover
         )
 
     if pairs is None or stats is None:
-        st.error(error_msg or "Benchmark execution failed.")
+        st.markdown(
+            f'<div class="vr-note error">{_esc(error_msg or "Benchmark execution failed.")}</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     if error_msg:
-        st.warning(error_msg)
+        st.markdown(f'<div class="vr-note warn">{_esc(error_msg)}</div>', unsafe_allow_html=True)
 
-    st.subheader("1. Core 4-Metric Comparative Results (Base RAG vs. Verification-Driven RAG)")
-    cols = st.columns(4)
-    for col, res in zip(cols, stats):
-        col.metric(
-            label=res.metric_name,
-            value=format_metric_value(res.mean_verified_b, res.unit),
-            delta=format_metric_value(res.mean_delta, res.unit, signed=True),
-        )
+    st.markdown(
+        _section("Results", f"{pdf_name} · mean across {len(pairs)} paired trials"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_metric_cards_html(stats), unsafe_allow_html=True)
+    st.write("")
+    st.markdown(build_table_html(build_four_metrics_summary_rows(stats)), unsafe_allow_html=True)
 
-    st.table(build_four_metrics_summary_rows(stats))
-
-    st.subheader("2. Side-by-Side Output & Verification Gate Audit (First Trial)")
     first_a, first_b = pairs[0]
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("#### Condition A: Base RAG (Unverified Output)")
-        st.warning(first_a.output_summary or "(Empty output)")
-        st.caption(
-            f"FActScore: {first_a.factual_precision_pct:.1f}% | "
-            f"NLI Consistency: {first_a.entailment_consistency_pct:.1f}% | "
-            f"Citation Accuracy: {first_a.citation_accuracy_pct:.1f}% | "
-            f"Latency: {first_a.computational_latency_sec:.4f}s"
-        )
-    with col_b:
-        st.markdown("#### Condition B: Verification-Driven RAG (Pruned Output)")
-        st.success(first_b.output_summary or "(All sentences pruned by verification gate)")
-        st.caption(
-            f"FActScore: {first_b.factual_precision_pct:.1f}% | "
-            f"NLI Consistency: {first_b.entailment_consistency_pct:.1f}% | "
-            f"Citation Accuracy: {first_b.citation_accuracy_pct:.1f}% | "
-            f"Latency: {first_b.computational_latency_sec:.4f}s"
-        )
+    st.markdown(
+        _section("Output comparison", "First trial, side by side"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="vr-compare">'
+        + build_output_panel_html(first_a, verified=False)
+        + build_output_panel_html(first_b, verified=True)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("##### Atomic Claim Verification & Pruning Log (Condition B)")
-    st.dataframe(build_claim_audit_rows(first_b), use_container_width=True)
+    st.markdown(
+        _section(
+            "Claim verification log",
+            "Each atomic sentence from Condition B and the gate's decision",
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_table_html(build_claim_audit_rows(first_b)), unsafe_allow_html=True)
 
-    st.subheader("3. Per-Trial Breakdown & Export")
-    st.dataframe(build_trial_comparison_rows(pairs), use_container_width=True)
+    st.markdown(
+        _section("Per-trial breakdown", "Every trial, with exports below"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_table_html(build_trial_comparison_rows(pairs)), unsafe_allow_html=True)
 
+    st.write("")
     all_trials = [t for pair in pairs for t in pair]
-    dl_col1, dl_col2 = st.columns(2)
+    dl_col1, dl_col2, _spacer = st.columns([1, 1, 2])
     with dl_col1:
         st.download_button(
-            "Download Telemetry CSV",
+            "Download telemetry CSV",
             data=_trials_to_csv_bytes(all_trials),
             file_name="vrag_telemetry.csv",
             mime="text/csv",
@@ -999,7 +1038,7 @@ def render_streamlit_app() -> None:  # pragma: no cover
             indent=2,
         ).encode("utf-8")
         st.download_button(
-            "Download Statistical Summary JSON",
+            "Download summary JSON",
             data=json_payload,
             file_name="vrag_summary.json",
             mime="application/json",
