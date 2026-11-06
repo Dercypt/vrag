@@ -1,8 +1,13 @@
-"""Lightweight Streamlit UI for Student PDF Benchmarking across the 4 Core Thesis Metrics."""
+"""Minimal, modern Streamlit UI for Student PDF Benchmarking across the 4 Core Thesis Metrics.
+
+Features a light/dark theme toggle, custom-rendered metric cards and tables, and a quiet
+typographic system (Inter). All benchmark logic and row-builder helpers are unchanged.
+"""
 
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 from dataclasses import asdict
@@ -229,39 +234,675 @@ def execute_benchmark_safely(
         )
 
 
+# ---------------------------------------------------------------------------
+# Theme + HTML rendering helpers
+# ---------------------------------------------------------------------------
+
+_LIGHT_TOKENS: dict[str, str] = {
+    "bg": "#F7F8FA",
+    "surface": "#FFFFFF",
+    "surface-2": "#F1F3F6",
+    "border": "#E3E6EB",
+    "text": "#16191F",
+    "muted": "#667085",
+    "accent": "#3B5BDB",
+    "accent-soft": "#E8EDFD",
+    "accent-text": "#FFFFFF",
+    "good": "#0F8A5F",
+    "good-soft": "#E3F5EC",
+    "bad": "#C93B3B",
+    "bad-soft": "#FBE9E9",
+    "warn": "#A8620A",
+    "warn-soft": "#FCF1DE",
+    "shadow": "0 1px 2px rgba(16,24,40,.05)",
+}
+
+_DARK_TOKENS: dict[str, str] = {
+    "bg": "#0D1117",
+    "surface": "#151A22",
+    "surface-2": "#1C222C",
+    "border": "#262D39",
+    "text": "#E6E9EF",
+    "muted": "#8A94A6",
+    "accent": "#7C93F5",
+    "accent-soft": "#212A4A",
+    "accent-text": "#0D1117",
+    "good": "#4CC38A",
+    "good-soft": "#13281F",
+    "bad": "#F07178",
+    "bad-soft": "#2E1A1D",
+    "warn": "#E5A851",
+    "warn-soft": "#2B2214",
+    "shadow": "0 1px 2px rgba(0,0,0,.4)",
+}
+
+_BASE_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, .stApp, [class*="st-"], button, input, textarea {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+.material-icons, .material-symbols-rounded, [data-testid="stIconMaterial"],
+[class*="material-symbols"] {
+  font-family: 'Material Symbols Rounded' !important;
+}
+
+/* App shell */
+.stApp, [data-testid="stAppViewContainer"] {
+  background: var(--bg) !important;
+  color: var(--text);
+}
+[data-testid="stHeader"] {
+  background: transparent !important;
+}
+#MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {
+  display: none !important;
+}
+.block-container {
+  padding-top: 2.5rem !important;
+  padding-bottom: 4rem !important;
+  max-width: 1180px;
+}
+
+/* Text */
+.stApp p, .stApp label, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp h4,
+[data-testid="stMarkdownContainer"], [data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] label {
+  color: var(--text);
+}
+[data-testid="stCaptionContainer"], .stApp small {
+  color: var(--muted) !important;
+}
+[data-testid="stSpinner"] * {
+  color: var(--muted) !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background: var(--surface) !important;
+  border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] > div:first-child {
+  padding-top: 0.5rem;
+}
+[data-testid="stSidebarCollapseButton"] button, [data-testid="stExpandSidebarButton"] {
+  color: var(--muted) !important;
+}
+[data-testid="stSidebar"] hr {
+  border-color: var(--border);
+  margin: 1.1rem 0;
+}
+
+/* Inputs */
+[data-baseweb="input"], [data-baseweb="base-input"], [data-baseweb="select"] > div {
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+}
+[data-baseweb="input"] input, [data-baseweb="select"] input, [data-baseweb="select"] div {
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important;
+}
+[data-baseweb="input"] input::placeholder {
+  color: var(--muted) !important;
+  -webkit-text-fill-color: var(--muted) !important;
+}
+[data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+[data-baseweb="select"] svg, [data-baseweb="input"] svg {
+  fill: var(--muted) !important;
+  color: var(--muted) !important;
+}
+[data-baseweb="tag"] {
+  background: var(--accent-soft) !important;
+  border-radius: 6px !important;
+}
+[data-baseweb="tag"] span, [data-baseweb="tag"] svg {
+  color: var(--accent) !important;
+  fill: var(--accent) !important;
+  -webkit-text-fill-color: var(--accent) !important;
+}
+[data-baseweb="popover"] > div, [data-baseweb="menu"], [data-baseweb="popover"] ul {
+  background: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px !important;
+}
+[data-baseweb="menu"] li, [data-baseweb="popover"] li {
+  color: var(--text) !important;
+  background: transparent !important;
+}
+[data-baseweb="menu"] li:hover,
+[data-baseweb="popover"] li:hover,
+[data-baseweb="popover"] li[aria-selected="true"] {
+  background: var(--surface-2) !important;
+}
+
+/* Checkbox + toggle labels */
+[data-testid="stCheckbox"] label span, [data-testid="stToggle"] label span {
+  color: var(--text) !important;
+}
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] > div:first-child {
+  border-color: var(--border) !important;
+  background: var(--surface-2) !important;
+}
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] input:checked + div,
+[data-testid="stCheckbox"] [aria-checked="true"] > div:first-child {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+[data-testid="stToggle"] [data-baseweb="checkbox"] > div:first-child {
+  background: var(--border) !important;
+}
+[data-testid="stToggle"] [aria-checked="true"] > div:first-child {
+  background: var(--accent) !important;
+}
+[data-testid="stToggle"] [data-baseweb="checkbox"] > div:last-child {
+  background: #fff !important;
+}
+
+/* File uploader */
+[data-testid="stFileUploaderDropzone"] {
+  background: var(--surface-2) !important;
+  border: 1px dashed var(--border) !important;
+  border-radius: 10px !important;
+}
+[data-testid="stFileUploaderDropzone"] * {
+  color: var(--muted) !important;
+}
+[data-testid="stFileUploaderDropzone"] button {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 8px !important;
+}
+[data-testid="stFileUploaderFile"] * {
+  color: var(--text) !important;
+}
+
+/* Buttons */
+.stButton > button, .stDownloadButton > button {
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  padding: 0.55rem 1rem !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow);
+  transition: border-color .15s, background .15s;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.stButton > button[kind="primary"] {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-text) !important;
+  width: 100%;
+}
+.stButton > button[kind="primary"]:hover {
+  filter: brightness(1.08);
+  color: var(--accent-text) !important;
+}
+.stButton > button p, .stDownloadButton > button p {
+  color: inherit !important;
+}
+button:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+
+/* Custom components */
+.vr-hero h1 {
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0 0 .35rem 0;
+  padding: 0;
+  color: var(--text);
+}
+.vr-hero p {
+  font-size: .95rem;
+  color: var(--muted) !important;
+  margin: 0 0 1.75rem 0;
+  max-width: 62ch;
+  line-height: 1.55;
+}
+.vr-section {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2.25rem 0 .25rem 0;
+  color: var(--text);
+}
+.vr-sub {
+  font-size: .85rem;
+  color: var(--muted);
+  margin: 0 0 1rem 0;
+}
+.vr-side-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: .25rem 0 .1rem 0;
+  color: var(--text);
+}
+.vr-side-sub {
+  font-size: .8rem;
+  color: var(--muted);
+  margin: 0 0 .5rem 0;
+}
+.vr-label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 1.1rem 0 .4rem 0;
+}
+
+.vr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .8rem;
+  font-weight: 500;
+  padding: .3rem .65rem;
+  border-radius: 999px;
+  margin: .15rem 0 .6rem 0;
+}
+.vr-pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.vr-pill.ok {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.vr-pill.off {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.vr-note {
+  font-size: .85rem;
+  line-height: 1.5;
+  padding: .75rem 1rem;
+  border-radius: 10px;
+  margin: 0 0 1rem 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.vr-note.warn {
+  background: var(--warn-soft);
+  border-color: transparent;
+  color: var(--warn);
+}
+.vr-note.error {
+  background: var(--bad-soft);
+  border-color: transparent;
+  color: var(--bad);
+}
+
+.vr-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 1000px) {
+  .vr-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .vr-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.vr-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--shadow);
+}
+.vr-card .name {
+  font-size: .8rem;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.35;
+  min-height: 2.15em;
+}
+.vr-card .value {
+  font-size: 1.9rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin: .35rem 0 .55rem 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.vr-card .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.vr-card .base {
+  font-size: .75rem;
+  color: var(--muted);
+}
+.vr-chip {
+  font-size: .75rem;
+  font-weight: 600;
+  padding: .15rem .5rem;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.vr-chip.good {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.vr-chip.bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.vr-chip.neutral {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.vr-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 800px) {
+  .vr-compare {
+    grid-template-columns: 1fr;
+  }
+}
+.vr-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--shadow);
+}
+.vr-panel.verified {
+  border-top: 3px solid var(--accent);
+}
+.vr-panel.base {
+  border-top: 3px solid var(--border);
+}
+.vr-panel h4 {
+  font-size: .95rem;
+  font-weight: 600;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+}
+.vr-panel .tag {
+  font-size: .75rem;
+  color: var(--muted);
+  margin: .1rem 0 .8rem 0;
+}
+.vr-panel .body {
+  font-size: .9rem;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: pre-wrap;
+  min-height: 4rem;
+}
+.vr-panel .body.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.vr-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: 1rem;
+  padding-top: .9rem;
+  border-top: 1px solid var(--border);
+}
+.vr-stat {
+  font-size: .75rem;
+  background: var(--surface-2);
+  color: var(--muted);
+  padding: .2rem .55rem;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.vr-stat b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.vr-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+table.vr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+}
+table.vr-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: .65rem .9rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.vr-table td {
+  padding: .65rem .9rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+table.vr-table tr:last-child td {
+  border-bottom: none;
+}
+table.vr-table td.wide {
+  min-width: 260px;
+  line-height: 1.5;
+}
+.vr-badge {
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .15rem .5rem;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.vr-badge.good {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.vr-badge.bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.vr-empty {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 2rem 1.75rem;
+}
+.vr-empty h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 .5rem 0;
+  color: var(--text);
+}
+.vr-empty p {
+  font-size: .9rem;
+  color: var(--muted) !important;
+  margin: 0 0 .35rem 0;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+"""
+
+
+def build_theme_css(dark: bool) -> str:
+    """Return a full <style> block for the requested theme."""
+    tokens = _DARK_TOKENS if dark else _LIGHT_TOKENS
+    root = "".join(f"--{k}: {v};" for k, v in tokens.items())
+    scheme = "dark" if dark else "light"
+    return f"<style>:root {{ {root} color-scheme: {scheme}; }}{_BASE_CSS}</style>"
+
+
+def _esc(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def _section(title: str, subtitle: str = "") -> str:
+    sub = f'<div class="vr-sub">{_esc(subtitle)}</div>' if subtitle else ""
+    return f'<div class="vr-section">{_esc(title)}</div>{sub}'
+
+
+def build_metric_cards_html(stats: list[PairedStatisticalResult]) -> str:
+    """Render the four headline metrics as compact cards with a colored delta chip."""
+    cards: list[str] = []
+    for res in stats:
+        delta = res.mean_delta
+        lower_is_better = "latency" in res.metric_name.lower()
+        if abs(delta) < 1e-12:
+            tone, arrow = "neutral", "–"
+        else:
+            improved = delta < 0 if lower_is_better else delta > 0
+            tone = "good" if improved else "bad"
+            arrow = "▲" if delta > 0 else "▼"
+        delta_txt = format_metric_value(delta, res.unit, signed=True)
+        base_txt = format_metric_value(res.mean_baseline_a, res.unit)
+        cards.append(
+            f'<div class="vr-card" title="{_esc(METRIC_DESCRIPTIONS.get(res.metric_name, ""))}">'
+            f'<div class="name">{_esc(res.metric_name)}</div>'
+            f'<div class="value">{_esc(format_metric_value(res.mean_verified_b, res.unit))}</div>'
+            f'<div class="row"><span class="vr-chip {tone}">{arrow} {_esc(delta_txt)}</span>'
+            f'<span class="base">Base {_esc(base_txt)}</span></div></div>'
+        )
+    return f'<div class="vr-grid">{"".join(cards)}</div>'
+
+
+_WIDE_COLUMNS = {"Atomic Sentence", "Prompt", "Description", "Prune Reason"}
+
+
+def build_table_html(rows: list[dict[str, object]]) -> str:
+    """Render rows as a styled, horizontally scrollable HTML table."""
+    if not rows:
+        return '<div class="vr-note">No rows to display.</div>'
+    headers = list(rows[0].keys())
+    head = "".join(f"<th>{_esc(h)}</th>" for h in headers)
+    body_rows: list[str] = []
+    for row in rows:
+        cells: list[str] = []
+        for h in headers:
+            text = str(row.get(h, ""))
+            if text.startswith("SURVIVED"):
+                inner = f'<span class="vr-badge good">{_esc(text)}</span>'
+            elif text.startswith("PRUNED"):
+                inner = f'<span class="vr-badge bad">{_esc(text)}</span>'
+            else:
+                inner = _esc(text)
+            cls = ' class="wide"' if h in _WIDE_COLUMNS else ""
+            cells.append(f"<td{cls}>{inner}</td>")
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+    return (
+        '<div class="vr-table-wrap"><table class="vr-table">'
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
+    )
+
+
+def build_output_panel_html(trial: TrialTelemetry, *, verified: bool) -> str:
+    """Render one condition's output and its four metrics as a panel."""
+    title = "Verification-driven RAG" if verified else "Base RAG"
+    tag = (
+        "Condition B · unsupported claims pruned" if verified else "Condition A · unverified output"
+    )
+    fallback = "All sentences were pruned by the verification gate." if verified else "No output."
+    text = trial.output_summary or ""
+    body_cls = "body" if text else "body empty"
+    stats = [
+        ("FActScore", f"{trial.factual_precision_pct:.1f}%"),
+        ("NLI", f"{trial.entailment_consistency_pct:.1f}%"),
+        ("Citations", f"{trial.citation_accuracy_pct:.1f}%"),
+        ("Latency", f"{trial.computational_latency_sec:.4f}s"),
+    ]
+    chips = "".join(f'<span class="vr-stat">{_esc(k)} <b>{_esc(v)}</b></span>' for k, v in stats)
+    return (
+        f'<div class="vr-panel {"verified" if verified else "base"}">'
+        f'<h4>{_esc(title)}</h4><div class="tag">{_esc(tag)}</div>'
+        f'<div class="{body_cls}">{_esc(text or fallback)}</div>'
+        f'<div class="vr-stats">{chips}</div></div>'
+    )
+
+
 def render_streamlit_app() -> None:  # pragma: no cover
     """Render the minimal Streamlit comparative benchmark UI."""
     import streamlit as st
 
     st.set_page_config(
-        page_title="vrag — Verification-Driven RAG Benchmark",
+        page_title="vrag · Verification-Driven RAG Benchmark",
         layout="wide",
-    )
-    st.title("Verification-Driven RAG vs. Base RAG — Comparative Benchmark")
-    st.caption(
-        "Thesis Harness: Evaluating Factual Precision (FActScore %), Entailment Consistency "
-        "(NLI Score %), Citation Accuracy (%), and Computational Latency (s)."
+        initial_sidebar_state="expanded",
     )
 
     with st.sidebar:
-        st.header("1. Student PDF Input")
+        st.markdown(
+            '<div class="vr-side-title">vrag</div>'
+            '<div class="vr-side-sub">Verification-driven RAG benchmark</div>',
+            unsafe_allow_html=True,
+        )
+        dark_mode = st.toggle("Dark mode", value=False, key="vr_dark_mode")
+
+    st.markdown(build_theme_css(dark_mode), unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.divider()
+        st.markdown('<div class="vr-label">Document</div>', unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "Upload Student / Academic PDF",
+            "Student or academic paper",
             type=["pdf", "txt"],
             help="Upload a student paper PDF to run the 4-metric comparative benchmark.",
+            label_visibility="collapsed",
         )
 
-        st.header("2. Benchmark Configuration")
+        st.markdown('<div class="vr-label">Models</div>', unsafe_allow_html=True)
         selected_models = st.multiselect(
-            "Local Ollama Models (Sequential Execution)",
+            "Local Ollama models (run sequentially)",
             options=list(APPROVED_MODELS),
             default=[APPROVED_MODELS[0]],
+            label_visibility="collapsed",
         )
+
         ollama_online = check_ollama_status()
         if ollama_online:
-            st.success("🟢 Local Ollama daemon is online (http://localhost:11434)")
+            st.markdown(
+                '<div class="vr-pill ok">'
+                '<span class="dot"></span>Ollama online · localhost:11434</div>',
+                unsafe_allow_html=True,
+            )
         else:
-            st.warning("⚠️ Local Ollama daemon is offline (http://localhost:11434)")
+            st.markdown(
+                '<div class="vr-pill off">'
+                '<span class="dot"></span>Ollama offline · localhost:11434</div>',
+                unsafe_allow_html=True,
+            )
 
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
@@ -269,20 +910,36 @@ def render_streamlit_app() -> None:  # pragma: no cover
             help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
         )
         if not ollama_online and not sim_mode:
-            st.info(
-                "💡 Notice: Ollama daemon is offline. Running live mode will automatically "
-                "fall back to Simulation Mode if connection is refused."
+            st.caption(
+                "Ollama is offline. Live runs will fall back to simulation if the connection "
+                "is refused."
             )
+
+        st.markdown('<div class="vr-label">Prompt</div>', unsafe_allow_html=True)
         custom_query = st.text_input(
-            "Optional Custom Prompt (leave blank to run 4-prompt benchmark suite)",
+            "Custom prompt",
             value="",
+            placeholder="Leave blank to run the 4-prompt suite",
+            label_visibility="collapsed",
         )
-        run_btn = st.button("Run Comparative Benchmark", type="primary")
+        st.write("")
+        run_btn = st.button("Run comparative benchmark", type="primary")
+
+    st.markdown(
+        '<div class="vr-hero"><h1>Verification-driven RAG vs. base RAG</h1>'
+        "<p>Compare factual precision, entailment consistency, citation accuracy, and "
+        "latency on your own paper, with every claim audited sentence by sentence.</p></div>",
+        unsafe_allow_html=True,
+    )
 
     if not run_btn:
-        st.info(
-            "Upload a student PDF in the sidebar (or use the built-in sample paper) and click "
-            "**Run Comparative Benchmark** to compare Base RAG vs. Verification-Driven RAG."
+        st.markdown(
+            '<div class="vr-empty"><h3>Ready when you are</h3>'
+            "<p>Upload a student PDF in the sidebar, or skip the upload to use the built-in "
+            "sample paper.</p>"
+            "<p>Choose your models, then select <b>Run comparative benchmark</b> to see how "
+            "base RAG and verification-driven RAG compare.</p></div>",
+            unsafe_allow_html=True,
         )
         return
 
@@ -317,56 +974,57 @@ def render_streamlit_app() -> None:  # pragma: no cover
         )
 
     if pairs is None or stats is None:
-        st.error(error_msg or "Benchmark execution failed.")
+        st.markdown(
+            f'<div class="vr-note error">{_esc(error_msg or "Benchmark execution failed.")}</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     if error_msg:
-        st.warning(error_msg)
+        st.markdown(f'<div class="vr-note warn">{_esc(error_msg)}</div>', unsafe_allow_html=True)
 
-    st.subheader("1. Core 4-Metric Comparative Results (Base RAG vs. Verification-Driven RAG)")
-    cols = st.columns(4)
-    for col, res in zip(cols, stats):
-        col.metric(
-            label=res.metric_name,
-            value=format_metric_value(res.mean_verified_b, res.unit),
-            delta=format_metric_value(res.mean_delta, res.unit, signed=True),
-        )
+    st.markdown(
+        _section("Results", f"{pdf_name} · mean across {len(pairs)} paired trials"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_metric_cards_html(stats), unsafe_allow_html=True)
+    st.write("")
+    st.markdown(build_table_html(build_four_metrics_summary_rows(stats)), unsafe_allow_html=True)
 
-    st.table(build_four_metrics_summary_rows(stats))
-
-    st.subheader("2. Side-by-Side Output & Verification Gate Audit (First Trial)")
     first_a, first_b = pairs[0]
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("#### Condition A: Base RAG (Unverified Output)")
-        st.warning(first_a.output_summary or "(Empty output)")
-        st.caption(
-            f"FActScore: {first_a.factual_precision_pct:.1f}% | "
-            f"NLI Consistency: {first_a.entailment_consistency_pct:.1f}% | "
-            f"Citation Accuracy: {first_a.citation_accuracy_pct:.1f}% | "
-            f"Latency: {first_a.computational_latency_sec:.4f}s"
-        )
-    with col_b:
-        st.markdown("#### Condition B: Verification-Driven RAG (Pruned Output)")
-        st.success(first_b.output_summary or "(All sentences pruned by verification gate)")
-        st.caption(
-            f"FActScore: {first_b.factual_precision_pct:.1f}% | "
-            f"NLI Consistency: {first_b.entailment_consistency_pct:.1f}% | "
-            f"Citation Accuracy: {first_b.citation_accuracy_pct:.1f}% | "
-            f"Latency: {first_b.computational_latency_sec:.4f}s"
-        )
+    st.markdown(
+        _section("Output comparison", "First trial, side by side"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="vr-compare">'
+        + build_output_panel_html(first_a, verified=False)
+        + build_output_panel_html(first_b, verified=True)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("##### Atomic Claim Verification & Pruning Log (Condition B)")
-    st.dataframe(build_claim_audit_rows(first_b), use_container_width=True)
+    st.markdown(
+        _section(
+            "Claim verification log",
+            "Each atomic sentence from Condition B and the gate's decision",
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_table_html(build_claim_audit_rows(first_b)), unsafe_allow_html=True)
 
-    st.subheader("3. Per-Trial Breakdown & Export")
-    st.dataframe(build_trial_comparison_rows(pairs), use_container_width=True)
+    st.markdown(
+        _section("Per-trial breakdown", "Every trial, with exports below"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(build_table_html(build_trial_comparison_rows(pairs)), unsafe_allow_html=True)
 
+    st.write("")
     all_trials = [t for pair in pairs for t in pair]
-    dl_col1, dl_col2 = st.columns(2)
+    dl_col1, dl_col2, _spacer = st.columns([1, 1, 2])
     with dl_col1:
         st.download_button(
-            "Download Telemetry CSV",
+            "Download telemetry CSV",
             data=_trials_to_csv_bytes(all_trials),
             file_name="vrag_telemetry.csv",
             mime="text/csv",
@@ -380,7 +1038,7 @@ def render_streamlit_app() -> None:  # pragma: no cover
             indent=2,
         ).encode("utf-8")
         st.download_button(
-            "Download Statistical Summary JSON",
+            "Download summary JSON",
             data=json_payload,
             file_name="vrag_summary.json",
             mime="application/json",

@@ -6,8 +6,16 @@ import pytest
 
 from vrag.evaluator import run_student_pdf_benchmark
 from vrag.ui import (
+    _DARK_TOKENS,
+    _LIGHT_TOKENS,
+    _esc,
+    _section,
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
+    build_metric_cards_html,
+    build_output_panel_html,
+    build_table_html,
+    build_theme_css,
     build_trial_comparison_rows,
     execute_benchmark_safely,
     is_connection_refused_error,
@@ -204,3 +212,182 @@ def test_execute_benchmark_safely_falls_back_on_connection_refused(
     assert all_fail_stats is None
     assert all_fail_err is not None
     assert "Fallback environment failure" in all_fail_err
+
+
+def test_theme_css_generation_and_tokens() -> None:
+    light_css = build_theme_css(dark=False)
+    dark_css = build_theme_css(dark=True)
+
+    assert "color-scheme: light;" in light_css
+    assert "color-scheme: dark;" in dark_css
+    assert f"--bg: {_LIGHT_TOKENS['bg']};" in light_css
+    assert f"--bg: {_DARK_TOKENS['bg']};" in dark_css
+    assert "font-family: 'Inter'" in light_css
+    assert ".vr-card" in dark_css
+    assert ".vr-grid" in light_css
+
+    # Section generator with and without subtitle
+    sec_with_sub = _section("Results", "Detailed analysis")
+    assert '<div class="vr-section">Results</div>' in sec_with_sub
+    assert '<div class="vr-sub">Detailed analysis</div>' in sec_with_sub
+
+    sec_no_sub = _section("Settings")
+    assert '<div class="vr-section">Settings</div>' in sec_no_sub
+    assert "vr-sub" not in sec_no_sub
+
+
+def test_build_metric_cards_html_rendering() -> None:
+    from vrag.evaluator import PairedStatisticalResult
+
+    stats = [
+        PairedStatisticalResult(
+            metric_name="Factual Precision (FActScore)",
+            mean_baseline_a=60.0,
+            mean_verified_b=85.0,
+            mean_delta=25.0,
+            t_statistic=4.2,
+            t_pvalue=0.001,
+            unit="%",
+        ),
+        PairedStatisticalResult(
+            metric_name="Computational Latency",
+            mean_baseline_a=2.5,
+            mean_verified_b=1.8,
+            mean_delta=-0.7,
+            t_statistic=-3.1,
+            t_pvalue=0.01,
+            unit="s",
+        ),
+        PairedStatisticalResult(
+            metric_name="Citation Accuracy (Precision/Recall)",
+            mean_baseline_a=70.0,
+            mean_verified_b=70.0,
+            mean_delta=0.0,
+            t_statistic=0.0,
+            t_pvalue=1.0,
+            unit="%",
+        ),
+    ]
+
+    html_out = build_metric_cards_html(stats)
+    assert '<div class="vr-grid">' in html_out
+    assert "Factual Precision (FActScore)" in html_out
+    assert "85.00%" in html_out
+    assert "vr-chip good" in html_out
+    assert "▲ +25.00%" in html_out
+    assert "Base 60.00%" in html_out
+
+    # Latency: lower is better (-0.7 delta is good and arrow is ▼)
+    assert "Computational Latency" in html_out
+    assert "1.8000s" in html_out
+    assert "▼ -0.7000s" in html_out
+
+    # Zero delta: neutral tone with dash
+    assert "vr-chip neutral" in html_out
+    assert "– +0.00%" in html_out
+
+
+def test_build_table_html_and_badges() -> None:
+    rows = [
+        {
+            "Sentence #": "1",
+            "Atomic Sentence": "Transformers use self-attention.",
+            "Gate Decision": "SURVIVED (TP)",
+        },
+        {
+            "Sentence #": "2",
+            "Atomic Sentence": "Einstein invented transformers.",
+            "Gate Decision": "PRUNED (TN)",
+        },
+    ]
+    html_table = build_table_html(rows)
+    assert '<table class="vr-table">' in html_table
+    assert "<th>Atomic Sentence</th>" in html_table
+    assert '<span class="vr-badge good">SURVIVED (TP)</span>' in html_table
+    assert '<span class="vr-badge bad">PRUNED (TN)</span>' in html_table
+    assert '<td class="wide">Transformers use self-attention.</td>' in html_table
+
+
+def test_build_output_panel_html() -> None:
+    from vrag.models import ConfusionMatrix, PipelineMode, StageLatencies, TrialTelemetry
+
+    trial = TrialTelemetry(
+        trial_id="test_trial",
+        pdf_sha256="abc12345",
+        prompt="Explain transformers",
+        model_name="llama3.1:8b-instruct-q4_K_M",
+        mode=PipelineMode.VERIFIED_B,
+        latencies=StageLatencies(
+            t_chunk=0.1,
+            t_retrieve=0.2,
+            t_generate=0.7,
+            t_verify=0.2345,
+        ),
+        atomic_factscore=1.0,
+        entailment_consistency=1.0,
+        citation_precision=1.0,
+        citation_recall=1.0,
+        confusion_matrix=ConfusionMatrix(tp=2, fp=0, tn=0, fn=0),
+        peak_ram_mb=500.0,
+        output_summary="Grounded thesis summary.",
+    )
+
+    panel_verified = build_output_panel_html(trial, verified=True)
+    assert 'class="vr-panel verified"' in panel_verified
+    assert "Verification-driven RAG" in panel_verified
+    assert "Condition B · unsupported claims pruned" in panel_verified
+    assert "Grounded thesis summary." in panel_verified
+    assert "FActScore <b>100.0%</b>" in panel_verified
+    assert "Latency <b>1.2345s</b>" in panel_verified
+
+    panel_base = build_output_panel_html(trial, verified=False)
+    assert 'class="vr-panel base"' in panel_base
+    assert "Base RAG" in panel_base
+    assert "Condition A · unverified output" in panel_base
+
+
+def test_ui_edge_cases_and_html_escaping() -> None:
+    from vrag.models import ConfusionMatrix, PipelineMode, StageLatencies, TrialTelemetry
+
+    # 1. Empty table returns fallback note
+    assert build_table_html([]) == '<div class="vr-note">No rows to display.</div>'
+
+    # 2. Empty output panel falls back to descriptive empty state
+    empty_trial = TrialTelemetry(
+        trial_id="empty_trial",
+        pdf_sha256="abc12345",
+        prompt="Explain transformers",
+        model_name="llama3.1:8b-instruct-q4_K_M",
+        mode=PipelineMode.VERIFIED_B,
+        latencies=StageLatencies(t_chunk=0.0, t_retrieve=0.0, t_generate=0.0, t_verify=0.0),
+        atomic_factscore=0.0,
+        entailment_consistency=0.0,
+        citation_precision=0.0,
+        citation_recall=0.0,
+        confusion_matrix=ConfusionMatrix(tp=0, fp=0, tn=2, fn=0),
+        peak_ram_mb=400.0,
+        output_summary="",
+    )
+
+    empty_verified = build_output_panel_html(empty_trial, verified=True)
+    assert 'class="body empty"' in empty_verified
+    assert "All sentences were pruned by the verification gate." in empty_verified
+
+    empty_base = build_output_panel_html(empty_trial, verified=False)
+    assert 'class="body empty"' in empty_base
+    assert "No output." in empty_base
+
+    # 3. HTML escaping prevents XSS / markup corruption
+    assert (
+        _esc("<script>alert('xss')</script>")
+        == "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+    )
+    xss_row = [
+        {
+            "Claim": "<script>alert('xss')</script>",
+            "Gate Decision": "PRUNED (TN)",
+        }
+    ]
+    rendered_xss = build_table_html(xss_row)
+    assert "<script>" not in rendered_xss
+    assert "&lt;script&gt;" in rendered_xss
