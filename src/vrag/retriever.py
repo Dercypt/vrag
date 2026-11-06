@@ -6,6 +6,7 @@ import math
 from collections.abc import Callable
 from typing import Any
 
+from vrag.chunker import get_cached_minilm_model
 from vrag.models import Chunk, RetrievedPassage
 
 EmbedderFn = Callable[[list[str]], list[list[float]]]
@@ -54,7 +55,7 @@ class LocalVectorRetriever:
                 "or pass an injectable embed_fn / use Simulation Mode)."
             ) from err
 
-        model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+        model = get_cached_minilm_model(SentenceTransformer)
         arr = model.encode(texts, convert_to_numpy=True)
         return [row.tolist() for row in arr]
 
@@ -74,6 +75,8 @@ class LocalVectorRetriever:
             import faiss  # type: ignore[import-untyped]
             import numpy as np
 
+            if hasattr(faiss, "omp_set_num_threads"):
+                faiss.omp_set_num_threads(1)
             mat = np.asarray(self._normalized_embeddings, dtype=np.float32)
             index = faiss.IndexFlatIP(mat.shape[1])
             index.add(mat)
