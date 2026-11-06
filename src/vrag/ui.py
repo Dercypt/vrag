@@ -17,7 +17,7 @@ from vrag.evaluator import (
     PairedStatisticalResult,
     run_student_pdf_benchmark,
 )
-from vrag.generator import check_ollama_status
+from vrag.generator import OllamaHealthReport, diagnose_ollama
 from vrag.models import (
     APPROVED_MODELS,
     DEFAULT_STUDENT_BENCHMARK_PROMPTS,
@@ -549,6 +549,29 @@ button:focus-visible {
   color: var(--bad);
 }
 
+.vr-guide {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  font-size: .82rem;
+  line-height: 1.5;
+  color: var(--text);
+  margin: .3rem 0 .7rem 0;
+}
+.vr-guide .title {
+  font-weight: 600;
+  margin-bottom: .35rem;
+  color: var(--text);
+}
+.vr-guide ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.vr-guide li {
+  margin-bottom: .35rem;
+}
+
 .vr-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -852,6 +875,28 @@ def build_output_panel_html(trial: TrialTelemetry, *, verified: bool) -> str:
     )
 
 
+def build_ollama_troubleshooting_html(report: OllamaHealthReport) -> str:
+    """Render structured troubleshooting guide for local Ollama daemon status."""
+    if report.is_online and not report.missing_approved_models:
+        return (
+            '<div class="vr-guide">'
+            '<div class="title">Daemon Ready</div>'
+            f"<div>Ollama is reachable at <code>{_esc(report.base_url)}</code> and "
+            f"all {len(APPROVED_MODELS)} models are ready.</div>"
+            "</div>"
+        )
+
+    title = "How to Fix: Ollama Offline" if not report.is_online else "Missing Approved Models"
+    steps_html = "".join(f"<li>{_esc(step)}</li>" for step in report.troubleshooting_steps)
+    return (
+        '<div class="vr-guide">'
+        f'<div class="title">{_esc(title)}</div>'
+        f'<div style="margin-bottom:.4rem;color:var(--muted);">{_esc(report.message)}</div>'
+        f"<ol>{steps_html}</ol>"
+        "</div>"
+    )
+
+
 def render_streamlit_app() -> None:  # pragma: no cover
     """Render the minimal Streamlit comparative benchmark UI."""
     import streamlit as st
@@ -890,7 +935,8 @@ def render_streamlit_app() -> None:  # pragma: no cover
             label_visibility="collapsed",
         )
 
-        ollama_online = check_ollama_status()
+        report = diagnose_ollama()
+        ollama_online = report.is_online
         if ollama_online:
             st.markdown(
                 '<div class="vr-pill ok">'
@@ -903,6 +949,18 @@ def render_streamlit_app() -> None:  # pragma: no cover
                 '<span class="dot"></span>Ollama offline · localhost:11434</div>',
                 unsafe_allow_html=True,
             )
+
+        if not ollama_online or report.missing_approved_models:
+            guide_label = (
+                "How to fix: Ollama offline"
+                if not ollama_online
+                else f"Missing {len(report.missing_approved_models)} model(s)"
+            )
+            with st.expander(guide_label, expanded=False):
+                st.markdown(
+                    build_ollama_troubleshooting_html(report),
+                    unsafe_allow_html=True,
+                )
 
         sim_mode = st.checkbox(
             "Use Deterministic Simulation Mode (Fast Offline)",
