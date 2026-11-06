@@ -176,12 +176,19 @@ def execute_benchmark_safely(
     prompts: tuple[tuple[str, str], ...],
     models: tuple[str, ...],
     simulation_mode: bool,
+    auto_fallback: bool = True,
 ) -> tuple[
     list[tuple[TrialTelemetry, TrialTelemetry]] | None,
     list[PairedStatisticalResult] | None,
     str | None,
 ]:
-    """Execute student PDF benchmark with robust exception catching and diagnostic message."""
+    """Execute student PDF benchmark with robust exception catching and diagnostic message.
+
+    If live execution fails due to an unreachable local Ollama daemon or connection refusal,
+    and auto_fallback is enabled, execution automatically falls back to Deterministic Simulation
+    Mode (Fast Offline) and returns the completed benchmark pairs, statistics, and an informative
+    warning notice instead of terminating with an error.
+    """
     try:
         pairs, stats = run_student_pdf_benchmark(
             pdf_bytes=pdf_bytes,
@@ -192,6 +199,25 @@ def execute_benchmark_safely(
         )
         return pairs, stats, None
     except Exception as err:
+        if not simulation_mode and auto_fallback and is_connection_refused_error(err):
+            try:
+                fallback_pairs, fallback_stats = run_student_pdf_benchmark(
+                    pdf_bytes=pdf_bytes,
+                    pdf_name=pdf_name,
+                    prompts=prompts,
+                    models=models,
+                    simulation_mode=True,
+                )
+                warning_msg = (
+                    f"Notice: Local Ollama daemon is unreachable ({err}). "
+                    "Benchmark automatically executed in "
+                    "Deterministic Simulation Mode (Fast Offline) "
+                    "so that your comparative evaluation could complete without interruption."
+                )
+                return fallback_pairs, fallback_stats, warning_msg
+            except Exception as fallback_err:
+                err = fallback_err
+
         return (
             None,
             None,
@@ -280,9 +306,12 @@ def render_streamlit_app() -> None:  # pragma: no cover
             simulation_mode=sim_mode,
         )
 
-    if error_msg or pairs is None or stats is None:
+    if pairs is None or stats is None:
         st.error(error_msg or "Benchmark execution failed.")
         return
+
+    if error_msg:
+        st.warning(error_msg)
 
     st.subheader("1. Core 4-Metric Comparative Results (Base RAG vs. Verification-Driven RAG)")
     cols = st.columns(4)
