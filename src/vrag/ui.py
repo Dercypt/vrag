@@ -21,6 +21,7 @@ from vrag.generator import OllamaHealthReport, diagnose_ollama
 from vrag.models import (
     APPROVED_MODELS,
     DEFAULT_STUDENT_BENCHMARK_PROMPTS,
+    NLILabel,
     TrialTelemetry,
 )
 
@@ -115,6 +116,95 @@ def build_claim_audit_rows(trial_b: TrialTelemetry) -> list[dict[str, object]]:
             }
         )
     return rows
+
+
+_FRIENDLY_MODEL_NAMES: dict[str, str] = {
+    "llama3.1:8b-instruct-q4_K_M": "Llama-3.1-8B",
+    "mistral:7b-instruct-v0.3-q4_K_M": "Mistral-7B",
+    "qwen2.5:7b-instruct-q4_K_M": "Qwen-2.5-7B",
+}
+
+
+def format_model_label(model_name: str) -> str:
+    """Return a concise, human-readable model label for UI tables and selectors."""
+    return _FRIENDLY_MODEL_NAMES.get(model_name, model_name.split(":")[0])
+
+
+def build_model_hallucination_rows(
+    pairs: list[tuple[TrialTelemetry, TrialTelemetry]],
+) -> list[dict[str, object]]:
+    """Aggregate hallucination rates and counts per model across Condition A vs. Condition B."""
+    grouped: dict[str, list[tuple[TrialTelemetry, TrialTelemetry]]] = {}
+    for pair in pairs:
+        grouped.setdefault(pair[0].model_name, []).append(pair)
+
+    rows: list[dict[str, object]] = []
+    for model_name, model_pairs in grouped.items():
+        n = len(model_pairs)
+        base_halluc_rate = sum(a.hallucination_error_rate_pct for a, _ in model_pairs) / n
+        ver_halluc_rate = sum(b.hallucination_error_rate_pct for _, b in model_pairs) / n
+        int_a = sum(a.intrinsic_hallucinations for a, _ in model_pairs)
+        int_b = sum(b.intrinsic_hallucinations for _, b in model_pairs)
+        ext_a = sum(a.extrinsic_hallucinations for a, _ in model_pairs)
+        ext_b = sum(b.extrinsic_hallucinations for _, b in model_pairs)
+        ver_fact = sum(b.factual_precision_pct for _, b in model_pairs) / n
+        avg_lat = sum(b.computational_latency_sec for _, b in model_pairs) / n
+
+        rows.append(
+            {
+                "Model": format_model_label(model_name),
+                "Base Hallucination Rate": f"{base_halluc_rate:.1f}%",
+                "Verified Hallucination Rate": f"{ver_halluc_rate:.1f}%",
+                "Intrinsic (Contradictions)": f"{int_a} → {int_b}",
+                "Extrinsic (Fabricated)": f"{ext_a} → {ext_b}",
+                "Verified FActScore": f"{ver_fact:.1f}%",
+                "Avg Latency": f"{avg_lat:.4f}s",
+            }
+        )
+    return rows
+
+
+def build_base_hallucination_evidence(trial_a: TrialTelemetry) -> list[dict[str, str]]:
+    """Extract concrete hallucinated claims from Condition A for transparent proof."""
+    evidence: list[dict[str, str]] = []
+    for claim in trial_a.claim_audit:
+        if (
+            claim.citation_exists
+            and claim.author_exists
+            and claim.year_exists
+            and claim.nli_label == NLILabel.ENTAILMENT
+            and claim.entailment_score >= 0.70
+        ):
+            continue
+
+        if claim.nli_label == NLILabel.CONTRADICTION:
+            h_type = "Intrinsic (Contradicts PDF)"
+            detail = f"NLI contradiction ({claim.entailment_score * 100:.0f}% entailment)"
+        elif not claim.author_exists or not claim.year_exists:
+            h_type = "Extrinsic (Fabricated Citation)"
+            missing = []
+            if not claim.author_exists and claim.extracted_authors:
+                missing.append(f"author {', '.join(claim.extracted_authors)}")
+            if not claim.year_exists and claim.extracted_years:
+                missing.append(f"year {', '.join(claim.extracted_years)}")
+            detail = f"Not found in cited PDF chunk ({'; '.join(missing) or 'invalid citation'})"
+        elif not claim.citation_exists:
+            h_type = "Extrinsic (Invalid Chunk Tag)"
+            detail = (
+                f"Cited {', '.join(claim.cited_chunk_ids) or 'no chunk'} " "which was not retrieved"
+            )
+        else:
+            h_type = "Extrinsic (Unsupported Claim)"
+            detail = f"NLI {claim.nli_label.value} ({claim.entailment_score * 100:.0f}% entailment)"
+
+        evidence.append(
+            {
+                "Type": h_type,
+                "Flagged Claim": claim.sentence,
+                "Detail": detail,
+            }
+        )
+    return evidence
 
 
 def _trials_to_csv_bytes(trials: list[TrialTelemetry]) -> bytes:
