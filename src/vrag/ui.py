@@ -927,7 +927,14 @@ def build_metric_cards_html(stats: list[PairedStatisticalResult]) -> str:
     return f'<div class="vr-grid">{"".join(cards)}</div>'
 
 
-_WIDE_COLUMNS = {"Atomic Sentence", "Prompt", "Description", "Prune Reason"}
+_WIDE_COLUMNS = {
+    "Atomic Sentence",
+    "Prompt",
+    "Description",
+    "Prune Reason",
+    "Flagged Claim",
+    "Detail",
+}
 
 
 def build_table_html(rows: list[dict[str, object]]) -> str:
@@ -1024,19 +1031,23 @@ def render_streamlit_app() -> None:  # pragma: no cover
 
     with st.sidebar:
         st.divider()
-        st.markdown('<div class="vr-label">Document</div>', unsafe_allow_html=True)
+        st.markdown('<div class="vr-label">1. Document</div>', unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
             "Student or academic paper",
             type=["pdf", "txt"],
-            help="Upload a student paper PDF to run the 4-metric comparative benchmark.",
+            help="Upload any PDF to test how all 3 models hallucinate on it.",
             label_visibility="collapsed",
         )
+        st.caption("Leave empty to test with a built-in sample paper.")
 
-        st.markdown('<div class="vr-label">Models</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="vr-label">2. Models (run sequentially)</div>', unsafe_allow_html=True
+        )
         selected_models = st.multiselect(
             "Local Ollama models (run sequentially)",
             options=list(APPROVED_MODELS),
-            default=[APPROVED_MODELS[0]],
+            default=list(APPROVED_MODELS),
+            format_func=format_model_label,
             label_visibility="collapsed",
         )
 
@@ -1069,9 +1080,9 @@ def render_streamlit_app() -> None:  # pragma: no cover
 
         ollama_ready = ollama_online and not report.missing_approved_models
         sim_mode = st.checkbox(
-            "Use Deterministic Simulation Mode (Fast Offline)",
+            "Offline simulation mode",
             value=not ollama_ready,
-            help="When enabled, simulates LLM responses grounded on your uploaded PDF chunks.",
+            help="Runs locally without Ollama using realistic simulated model outputs.",
         )
         if not ollama_online and not sim_mode:
             st.caption(
@@ -1080,67 +1091,81 @@ def render_streamlit_app() -> None:  # pragma: no cover
             )
         elif report.missing_approved_models and not sim_mode:
             st.caption(
-                "One or more approved Ollama models are not pulled yet. Pull the selected model "
-                "before running live inference."
+                "One or more approved models are not pulled yet. Pull them before running live."
             )
 
-        st.markdown('<div class="vr-label">Prompt</div>', unsafe_allow_html=True)
+        st.markdown('<div class="vr-label">3. Prompt (optional)</div>', unsafe_allow_html=True)
         custom_query = st.text_input(
             "Custom prompt",
             value="",
-            placeholder="Leave blank to run the 4-prompt suite",
+            placeholder="Leave blank for 4-prompt suite",
             label_visibility="collapsed",
         )
         st.write("")
-        run_btn = st.button("Run comparative benchmark", type="primary")
+        run_btn = st.button("Run benchmark", type="primary")
 
     st.markdown(
-        '<div class="vr-hero"><h1>Verification-driven RAG vs. base RAG</h1>'
-        "<p>Compare factual precision, entailment consistency, citation accuracy, and "
-        "latency on your own paper, with every claim audited sentence by sentence.</p></div>",
+        '<div class="vr-hero"><h1>Hallucination Benchmark</h1>'
+        "<p>Compare standard RAG against verification-driven RAG across Llama-3.1-8B, "
+        "Mistral-7B, and Qwen-2.5-7B on any uploaded PDF.</p></div>",
         unsafe_allow_html=True,
     )
 
-    if not run_btn:
+    if run_btn:
+        if uploaded_file is not None:
+            pdf_bytes = uploaded_file.getvalue()
+            pdf_name = uploaded_file.name
+        else:
+            pdf_name = "sample_student_thesis.pdf"
+            pdf_bytes = (
+                b"Bang et al. (2025) evaluated 7B to 8B open-source models on HalluLens and found "
+                b"baseline hallucination rates between 48% and 85%. "
+                b"Kadavath et al. (2022) showed smaller models act overconfident when wrong.\f"
+                b"Wang et al. (2025) proposed dynamic semantic chunking using cosine similarity. "
+                b"Qian et al. (2025) introduced VeriCite to prune unentailed claims via NLI."
+            )
+
+        models_tuple = tuple(selected_models) if selected_models else tuple(APPROVED_MODELS)
+        if custom_query.strip():
+            prompts = (
+                ("custom_1", custom_query.strip()),
+                ("custom_2", f"{custom_query.strip()} (Provide detailed methodology citations.)"),
+            )
+        else:
+            prompts = DEFAULT_STUDENT_BENCHMARK_PROMPTS
+
+        with st.spinner("Running sequential Condition A vs. Condition B benchmark..."):
+            pairs, stats, error_msg = execute_benchmark_safely(
+                pdf_bytes=pdf_bytes,
+                pdf_name=pdf_name,
+                prompts=prompts,
+                models=models_tuple,
+                simulation_mode=sim_mode,
+            )
+
+        st.session_state["vrag_results"] = {
+            "pairs": pairs,
+            "stats": stats,
+            "pdf_name": pdf_name,
+            "error_msg": error_msg,
+        }
+
+    saved = st.session_state.get("vrag_results")
+    if not saved:
         st.markdown(
-            '<div class="vr-empty"><h3>Ready when you are</h3>'
-            "<p>Upload a student PDF in the sidebar, or skip the upload to use the built-in "
-            "sample paper.</p>"
-            "<p>Choose your models, then select <b>Run comparative benchmark</b> to see how "
-            "base RAG and verification-driven RAG compare.</p></div>",
+            '<div class="vr-empty"><h3>Ready to test</h3>'
+            "<p>1. Upload any academic PDF in the sidebar (or use the built-in sample).</p>"
+            "<p>2. Keep all 3 models selected to compare how each one hallucinates.</p>"
+            "<p>3. Click <b>Run benchmark</b> to see fabricated claims and how NLI verification "
+            "prunes them.</p></div>",
             unsafe_allow_html=True,
         )
         return
 
-    if uploaded_file is not None:
-        pdf_bytes = uploaded_file.getvalue()
-        pdf_name = uploaded_file.name
-    else:
-        pdf_name = "sample_student_thesis.pdf"
-        pdf_bytes = (
-            b"Vaswani et al. (2017) introduced the Transformer architecture based on "
-            b"self-attention mechanisms.\f"
-            b"Lewis et al. (2020) proposed Retrieval-Augmented Generation to ground LLMs on "
-            b"retrieved passages and reduce factual hallucinations."
-        )
-
-    models_tuple = tuple(selected_models) if selected_models else (APPROVED_MODELS[0],)
-    if custom_query.strip():
-        prompts = (
-            ("custom_1", custom_query.strip()),
-            ("custom_2", f"{custom_query.strip()} (Provide detailed methodology citations.)"),
-        )
-    else:
-        prompts = DEFAULT_STUDENT_BENCHMARK_PROMPTS
-
-    with st.spinner("Running sequential Condition A vs. Condition B benchmark..."):
-        pairs, stats, error_msg = execute_benchmark_safely(
-            pdf_bytes=pdf_bytes,
-            pdf_name=pdf_name,
-            prompts=prompts,
-            models=models_tuple,
-            simulation_mode=sim_mode,
-        )
+    pairs = saved["pairs"]
+    stats = saved["stats"]
+    pdf_name = saved["pdf_name"]
+    error_msg = saved["error_msg"]
 
     if pairs is None or stats is None:
         st.markdown(
@@ -1153,40 +1178,65 @@ def render_streamlit_app() -> None:  # pragma: no cover
         st.markdown(f'<div class="vr-note warn">{_esc(error_msg)}</div>', unsafe_allow_html=True)
 
     st.markdown(
-        _section("Results", f"{pdf_name} · mean across {len(pairs)} paired trials"),
+        _section("Overview", f"{pdf_name} · mean across {len(pairs)} paired trials"),
         unsafe_allow_html=True,
     )
     st.markdown(build_metric_cards_html(stats), unsafe_allow_html=True)
-    st.write("")
-    st.markdown(build_table_html(build_four_metrics_summary_rows(stats)), unsafe_allow_html=True)
 
-    first_a, first_b = pairs[0]
     st.markdown(
-        _section("Output comparison", "First trial, side by side"),
+        _section(
+            "Hallucinations by model",
+            "Condition A (Base RAG) vs. Condition B (Verification-Driven RAG)",
+        ),
         unsafe_allow_html=True,
     )
+    st.markdown(build_table_html(build_model_hallucination_rows(pairs)), unsafe_allow_html=True)
+
+    st.markdown(
+        _section(
+            "Inspect a trial",
+            "Choose any model and prompt to see exact hallucinations and pruned claims",
+        ),
+        unsafe_allow_html=True,
+    )
+    trial_labels = [
+        f"{format_model_label(a.model_name)} · {a.prompt[:65]}{'...' if len(a.prompt) > 65 else ''}"
+        for a, _b in pairs
+    ]
+    selected_idx = st.selectbox(
+        "Select trial to inspect",
+        options=list(range(len(pairs))),
+        format_func=lambda idx: trial_labels[idx],
+        label_visibility="collapsed",
+    )
+    sel_a, sel_b = pairs[selected_idx]
+
     st.markdown(
         '<div class="vr-compare">'
-        + build_output_panel_html(first_a, verified=False)
-        + build_output_panel_html(first_b, verified=True)
+        + build_output_panel_html(sel_a, verified=False)
+        + build_output_panel_html(sel_b, verified=True)
         + "</div>",
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        _section(
-            "Claim verification log",
-            "Each atomic sentence from Condition B and the gate's decision",
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(build_table_html(build_claim_audit_rows(first_b)), unsafe_allow_html=True)
+    evidence_rows = build_base_hallucination_evidence(sel_a)
+    with st.expander(
+        f"Flagged hallucinations in Base RAG ({len(evidence_rows)} caught)", expanded=True
+    ):
+        if evidence_rows:
+            st.markdown(build_table_html(evidence_rows), unsafe_allow_html=True)
+        else:
+            st.caption("No hallucinations detected in Base RAG for this trial.")
 
-    st.markdown(
-        _section("Per-trial breakdown", "Every trial, with exports below"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(build_table_html(build_trial_comparison_rows(pairs)), unsafe_allow_html=True)
+    with st.expander("Sentence-by-sentence verification log (Condition B)", expanded=False):
+        st.markdown(build_table_html(build_claim_audit_rows(sel_b)), unsafe_allow_html=True)
+
+    with st.expander("Statistical significance & per-trial telemetry", expanded=False):
+        st.markdown(
+            build_table_html(build_four_metrics_summary_rows(stats)), unsafe_allow_html=True
+        )
+        st.write("")
+        st.markdown(build_table_html(build_trial_comparison_rows(pairs)), unsafe_allow_html=True)
 
     st.write("")
     all_trials = [t for pair in pairs for t in pair]
