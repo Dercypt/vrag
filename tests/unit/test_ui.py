@@ -11,9 +11,11 @@ from vrag.ui import (
     _LIGHT_TOKENS,
     _esc,
     _section,
+    build_base_hallucination_evidence,
     build_claim_audit_rows,
     build_four_metrics_summary_rows,
     build_metric_cards_html,
+    build_model_hallucination_rows,
     build_ollama_troubleshooting_html,
     build_output_panel_html,
     build_table_html,
@@ -437,3 +439,40 @@ def test_build_ollama_troubleshooting_html_rendering() -> None:
     )
     html_ready = build_ollama_troubleshooting_html(ready_report)
     assert "Daemon Ready" in html_ready
+
+
+def test_build_model_hallucination_rows_and_base_evidence() -> None:
+    from vrag.models import APPROVED_MODELS
+
+    pdf_bytes = (
+        b"Bang et al. (2025) evaluated 7B to 8B open-source models on HalluLens and found "
+        b"baseline hallucination rates between 48% and 85%. "
+        b"Kadavath et al. (2022) showed smaller models act overconfident when wrong.\f"
+        b"Wang et al. (2025) proposed dynamic semantic chunking using cosine similarity. "
+        b"Qian et al. (2025) introduced VeriCite to prune unentailed claims via sentence-level NLI."
+    )
+    pairs, _stats = run_student_pdf_benchmark(
+        pdf_bytes=pdf_bytes,
+        pdf_name="thesis_sample.pdf",
+        models=APPROVED_MODELS,
+        simulation_mode=True,
+    )
+
+    model_rows = build_model_hallucination_rows(pairs)
+    assert len(model_rows) == 3
+    for row in model_rows:
+        assert "Model" in row
+        assert "Base Hallucination Rate" in row
+        assert "Verified Hallucination Rate" in row
+        assert "Intrinsic (Contradictions)" in row
+        assert "Extrinsic (Fabricated)" in row
+        assert "Verified FActScore" in row
+        assert "Avg Latency" in row
+
+    # Condition A of first trial must yield concrete hallucination evidence
+    trial_a, _trial_b = pairs[0]
+    evidence = build_base_hallucination_evidence(trial_a)
+    assert len(evidence) >= 1
+    types = {item["Type"] for item in evidence}
+    assert any("Intrinsic" in t or "Extrinsic" in t for t in types)
+    assert all("Flagged Claim" in item and "Detail" in item for item in evidence)
