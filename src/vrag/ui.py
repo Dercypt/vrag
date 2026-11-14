@@ -10,15 +10,22 @@ import csv
 import html
 import io
 import json
+import sys
 from dataclasses import asdict
+from pathlib import Path
 
-from vrag.cli import format_metric_value
-from vrag.evaluator import (
+# Allow direct execution (e.g. `streamlit run src/vrag/ui.py`) without PYTHONPATH=src
+_SRC_DIR = str(Path(__file__).resolve().parents[1])
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+from vrag.cli import format_metric_value  # noqa: E402
+from vrag.evaluator import (  # noqa: E402
     PairedStatisticalResult,
     run_student_pdf_benchmark,
 )
-from vrag.generator import OllamaHealthReport, diagnose_ollama
-from vrag.models import (
+from vrag.generator import OllamaHealthReport, diagnose_ollama  # noqa: E402
+from vrag.models import (  # noqa: E402
     APPROVED_MODELS,
     DEFAULT_STUDENT_BENCHMARK_PROMPTS,
     NLILabel,
