@@ -476,3 +476,72 @@ def test_build_model_hallucination_rows_and_base_evidence() -> None:
     types = {item["Type"] for item in evidence}
     assert any("Intrinsic" in t or "Extrinsic" in t for t in types)
     assert all("Flagged Claim" in item and "Detail" in item for item in evidence)
+
+
+def test_ui_script_executes_without_pythonpath() -> None:
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    ui_path = repo_root / "src" / "vrag" / "ui.py"
+    src_dir = str((repo_root / "src").resolve())
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    code = (
+        "import runpy, sys; "
+        f"sys.path[:] = [p for p in sys.path if p != {src_dir!r}]; "
+        f"runpy.run_path({str(ui_path)!r}, run_name='__vrag_import_check__')"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, f"ui.py failed without PYTHONPATH:\n{proc.stderr}"
+
+
+def test_ui_streamlit_apptest_without_pythonpath_and_rerun_idempotency() -> None:
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    pytest.importorskip("streamlit.testing.v1")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    ui_path = repo_root / "src" / "vrag" / "ui.py"
+    src_dir = str((repo_root / "src").resolve())
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    code = (
+        "import runpy, sys; "
+        "from streamlit.testing.v1 import AppTest; "
+        f"sys.path[:] = [p for p in sys.path if p != {src_dir!r}]; "
+        f"runpy.run_path({str(ui_path)!r}, run_name='__vrag_rerun_1__'); "
+        f"runpy.run_path({str(ui_path)!r}, run_name='__vrag_rerun_2__'); "
+        f"assert sys.path.count({src_dir!r}) == 1, sys.path; "
+        f"sys.path[:] = [p for p in sys.path if p != {src_dir!r}]; "
+        f"at = AppTest.from_file({str(ui_path)!r}).run(); "
+        "assert not at.exception, list(at.exception)"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "Streamlit AppTest failed without PYTHONPATH:\n"
+        f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )

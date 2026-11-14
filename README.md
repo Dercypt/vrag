@@ -45,9 +45,9 @@ pip install -e ".[dev,ui]"
 
 ### 3. Launch Student PDF Benchmark UI (Streamlit)
 ```bash
-PYTHONPATH=src streamlit run src/vrag/ui.py
+streamlit run src/vrag/ui.py
 ```
-Includes light/dark mode toggle, custom 4-metric summary cards, side-by-side output panel comparison, and atomic claim verification logs.
+Works directly without requiring `PYTHONPATH=src` or an editable install. Includes light/dark mode toggle, custom 4-metric summary cards, side-by-side output panel comparison, and atomic claim verification logs.
 
 ### 4. Run Deterministic Offline CLI Benchmark Demo
 ```bash
