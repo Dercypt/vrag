@@ -2,25 +2,12 @@
 
 from __future__ import annotations
 
-import math
-from collections.abc import Callable
 from typing import Any
 
-from vrag.chunker import get_cached_minilm_model
+from vrag.chunker import EmbedderFn, dot, embed_texts, l2_normalize
 from vrag.models import Chunk, RetrievedPassage
 
-EmbedderFn = Callable[[list[str]], list[list[float]]]
-
-
-def _l2_normalize(vec: list[float]) -> list[float]:
-    norm = math.sqrt(sum(v * v for v in vec))
-    if norm == 0.0:
-        return [0.0 for _ in vec]
-    return [v / norm for v in vec]
-
-
-def _dot(vec_a: list[float], vec_b: list[float]) -> float:
-    return sum(a * b for a, b in zip(vec_a, vec_b))
+# --- Local Vector Index & Retrieval ---
 
 
 class LocalVectorRetriever:
@@ -43,24 +30,11 @@ class LocalVectorRetriever:
         return self._chunk_map.get(chunk_id)
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
-        if self._embed_fn is not None:
-            return self._embed_fn(texts)
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError as err:
-            raise ImportError(
-                f"Failed to import sentence-transformers / transformers: {err}. "
-                "Ensure tokenizers and transformers versions are compatible "
-                "(e.g., pip install 'tokenizers>=0.22.0,<=0.23.0' 'huggingface-hub>=0.34.0,<1.0' "
-                "or pass an injectable embed_fn / use Simulation Mode)."
-            ) from err
-
-        model = get_cached_minilm_model(SentenceTransformer)
-        arr = model.encode(texts, convert_to_numpy=True)
-        return [row.tolist() for row in arr]
+        """Encode passages or queries using the injected embedder or local MiniLM."""
+        return embed_texts(texts, self._embed_fn)
 
     def index_chunks(self, chunks: list[Chunk]) -> None:
-        """Index chunks into local FAISS / normalized vector memory."""
+        """Index chunks into local FAISS IndexFlatIP or normalized vector memory."""
         self._chunks = list(chunks)
         self._chunk_map = {c.chunk_id: c for c in self._chunks}
         self._faiss_index = None
@@ -68,8 +42,10 @@ class LocalVectorRetriever:
             self._normalized_embeddings = []
             return
 
-        raw_embeddings = self._encode([c.text for c in self._chunks])
-        self._normalized_embeddings = [_l2_normalize(vec) for vec in raw_embeddings]
+        # L2-normalize once so inner-product search equals cosine similarity.
+        self._normalized_embeddings = [
+            l2_normalize(vec) for vec in self._encode([c.text for c in self._chunks])
+        ]
 
         try:
             import faiss  # type: ignore[import-untyped]
@@ -92,13 +68,15 @@ class LocalVectorRetriever:
             return []
 
         k = min(top_k, len(self._chunks))
-        query_vec = _l2_normalize(self._encode([query])[0])
+        query_vec = l2_normalize(self._encode([query])[0])
 
         if self._faiss_index is not None:
             import numpy as np
 
-            q_mat = np.asarray([query_vec], dtype=np.float32)
-            scores, indices = self._faiss_index.search(q_mat, k)
+            scores, indices = self._faiss_index.search(
+                np.asarray([query_vec], dtype=np.float32),
+                k,
+            )
             return [
                 RetrievedPassage(chunk=self._chunks[int(idx)], score=float(score))
                 for score, idx in zip(scores[0], indices[0])
@@ -106,7 +84,7 @@ class LocalVectorRetriever:
             ]
 
         scored = [
-            RetrievedPassage(chunk=chunk, score=_dot(query_vec, emb))
+            RetrievedPassage(chunk=chunk, score=dot(query_vec, emb))
             for chunk, emb in zip(self._chunks, self._normalized_embeddings)
         ]
         scored.sort(key=lambda item: item.score, reverse=True)
