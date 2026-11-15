@@ -23,27 +23,29 @@ from vrag.models import APPROVED_MODELS, NLILabel, NLIScore, TrialTelemetry
 
 console = Console()
 
+# --- Formatting & Rich Table Renderers ---
+
 
 def format_metric_value(value: float, unit: str, signed: bool = False) -> str:
     """Format a metric value with its unit ('%' or 's')."""
-    if unit == "s":
-        fmt = f"{value:+.4f}s" if signed else f"{value:.4f}s"
-        return fmt
-    fmt = f"{value:+.2f}%" if signed else f"{value:.2f}%"
-    return fmt
+    sign = "+" if signed else ""
+    return f"{value:{sign}.4f}s" if unit == "s" else f"{value:{sign}.2f}%"
 
 
 def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
     """Build a Rich comparative table for Condition A vs Condition B across the 4 core metrics."""
     table = Table(title="Condition A (Base RAG) vs. Condition B (Verification-Driven RAG)")
-    table.add_column("Metric", style="bold cyan", no_wrap=True)
-    table.add_column("Base (Mean)", justify="right")
-    table.add_column("Verified (Mean)", justify="right")
-    table.add_column("Delta", justify="right", style="bold green")
-    table.add_column("SD", justify="right")
-    table.add_column("Err Red", justify="right")
-    table.add_column("t-stat", justify="right")
-    table.add_column("p-value", justify="right", style="bold yellow")
+    for label, style, justify in (
+        ("Metric", "bold cyan", "left"),
+        ("Base (Mean)", None, "right"),
+        ("Verified (Mean)", None, "right"),
+        ("Delta", "bold green", "right"),
+        ("SD", None, "right"),
+        ("Err Red", None, "right"),
+        ("t-stat", None, "right"),
+        ("p-value", "bold yellow", "right"),
+    ):
+        table.add_column(label, style=style, justify=justify, no_wrap=(label == "Metric"))  # type: ignore[arg-type]
 
     for res in results:
         table.add_row(
@@ -62,15 +64,18 @@ def render_comparison_table(results: list[PairedStatisticalResult]) -> Table:
 def render_trial_telemetry_table(trials: list[TrialTelemetry]) -> Table:
     """Build a per-trial Rich table showing the 4 core metrics, confusion matrix, and RAM usage."""
     table = Table(title="Per-Trial Execution Telemetry")
-    table.add_column("Trial ID", style="cyan")
-    table.add_column("Model", style="magenta")
-    table.add_column("Mode")
-    table.add_column("FActScore (%)", justify="right")
-    table.add_column("NLI Consistency (%)", justify="right")
-    table.add_column("Citation Acc (%)", justify="right")
-    table.add_column("Latency (s)", justify="right")
-    table.add_column("TP/TN/FP/FN", justify="center")
-    table.add_column("RAM (MB)", justify="right")
+    for label, style, justify in (
+        ("Trial ID", "cyan", "left"),
+        ("Model", "magenta", "left"),
+        ("Mode", None, "left"),
+        ("FActScore (%)", None, "right"),
+        ("NLI Consistency (%)", None, "right"),
+        ("Citation Acc (%)", None, "right"),
+        ("Latency (s)", None, "right"),
+        ("TP/TN/FP/FN", None, "center"),
+        ("RAM (MB)", None, "right"),
+    ):
+        table.add_column(label, style=style, justify=justify)  # type: ignore[arg-type]
 
     for t in trials:
         cm = t.confusion_matrix
@@ -88,9 +93,25 @@ def render_trial_telemetry_table(trials: list[TrialTelemetry]) -> Table:
     return table
 
 
+def _export_and_print_results(
+    pairs: list[tuple[TrialTelemetry, TrialTelemetry]],
+    stats: list[PairedStatisticalResult],
+    output_dir: Path | str,
+) -> None:
+    """Persist CSV/JSON artifacts and render both Rich summary tables."""
+    all_trials = [t for pair in pairs for t in pair]
+    out_path = Path(output_dir)
+    export_telemetry_csv(all_trials, out_path / "telemetry.csv")
+    export_summary_json(all_trials, stats, out_path / "summary.json")
+    console.print(render_trial_telemetry_table(all_trials))
+    console.print(render_comparison_table(stats))
+
+
+# --- Benchmark & Diagnostics Runners ---
+
+
 def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatisticalResult]:
     """Run an offline deterministic multi-model benchmark sweep and export CSV/JSON artifacts."""
-    out_path = Path(output_dir)
     sample_docs = [
         (
             "doc1",
@@ -117,8 +138,7 @@ def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatistic
     def demo_post(_url: str, payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("keep_alive") == 0:
             return {"done": True}
-        prompt = str(payload.get("prompt", ""))
-        if "VERIFIABLE SUMMARY:" in prompt:
+        if "VERIFIABLE SUMMARY:" in str(payload.get("prompt", "")):
             return {
                 "response": (
                     "Vaswani et al. (2017) proposed the Transformer architecture [C1]. "
@@ -141,24 +161,18 @@ def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatistic
             )
         return NLIScore(label=NLILabel.ENTAILMENT, entailment_prob=0.96)
 
-    evaluator = ComparativeEvaluator(
+    with ComparativeEvaluator(
         generator=OllamaGenerator(http_post_fn=demo_post),
         embed_fn=demo_embed,
         nli_scorer=demo_nli,
-    )
-    pairs = evaluator.run_sequential_model_sweep(
-        documents=sample_docs,
-        models=APPROVED_MODELS,
-        top_k=2,
-    )
-    all_trials = [t for pair in pairs for t in pair]
+    ) as evaluator:
+        pairs = evaluator.run_sequential_model_sweep(
+            documents=sample_docs,
+            models=APPROVED_MODELS,
+            top_k=2,
+        )
     stats = compute_suite_statistics(pairs)
-
-    export_telemetry_csv(all_trials, out_path / "telemetry.csv")
-    export_summary_json(all_trials, stats, out_path / "summary.json")
-
-    console.print(render_trial_telemetry_table(all_trials))
-    console.print(render_comparison_table(stats))
+    _export_and_print_results(pairs, stats, output_dir)
     return stats
 
 
@@ -195,6 +209,23 @@ def run_doctor_check(report_override: OllamaHealthReport | None = None) -> int:
             console.print(f"  {idx}. {step}")
 
     return 0 if (report.is_online and not report.missing_approved_models) else 1
+
+
+def _resolve_simulation_mode(force_simulation: bool, target_label: str) -> bool:
+    """Return True if offline simulation should be used, printing a notice when falling back."""
+    if force_simulation:
+        return True
+    health = diagnose_ollama()
+    if health.is_online and not health.missing_approved_models:
+        return False
+    console.print(
+        f"[yellow]Notice: {health.message} "
+        f"Running {target_label} in Deterministic Simulation Mode (Fast Offline).[/yellow]"
+    )
+    return True
+
+
+# --- CLI Entrypoint ---
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -242,27 +273,14 @@ def main(argv: list[str] | None = None) -> int:
         return run_doctor_check()
 
     if args.corpus:
-        health = diagnose_ollama()
-        ollama_ready = (
-            (not args.simulation) and health.is_online and not health.missing_approved_models
-        )
-        if not ollama_ready and not args.simulation:
-            console.print(
-                f"[yellow]Notice: {health.message} "
-                "Running curated corpus in Deterministic Simulation Mode (Fast Offline).[/yellow]"
-            )
+        sim_mode = _resolve_simulation_mode(args.simulation, "curated corpus")
         pairs, stats = run_curated_corpus_benchmark(
             corpus_dir=Path(args.corpus),
             models=APPROVED_MODELS,
             top_k=3,
-            simulation_mode=not ollama_ready,
+            simulation_mode=sim_mode,
         )
-        all_trials = [t for pair in pairs for t in pair]
-        out_dir = Path(args.output_dir)
-        export_telemetry_csv(all_trials, out_dir / "telemetry.csv")
-        export_summary_json(all_trials, stats, out_dir / "summary.json")
-        console.print(render_trial_telemetry_table(all_trials))
-        console.print(render_comparison_table(stats))
+        _export_and_print_results(pairs, stats, args.output_dir)
         return 0
 
     if args.demo or not args.pdf:
@@ -270,29 +288,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     pdf_path = Path(args.pdf)
-    pdf_bytes = pdf_path.read_bytes()
-    health = diagnose_ollama()
-    ollama_ready = (not args.simulation) and health.is_online and not health.missing_approved_models
-    if not ollama_ready and not args.simulation:
-        console.print(
-            f"[yellow]Notice: {health.message} "
-            "Running benchmark in Deterministic Simulation Mode (Fast Offline).[/yellow]"
-        )
+    sim_mode = _resolve_simulation_mode(args.simulation, "benchmark")
     pairs, stats = run_student_pdf_benchmark(
-        pdf_bytes=pdf_bytes,
+        pdf_bytes=pdf_path.read_bytes(),
         pdf_name=pdf_path.name,
         models=APPROVED_MODELS,
         top_k=3,
-        simulation_mode=not ollama_ready,
+        simulation_mode=sim_mode,
     )
-    all_trials = [t for pair in pairs for t in pair]
-
-    out_dir = Path(args.output_dir)
-    export_telemetry_csv(all_trials, out_dir / "telemetry.csv")
-    export_summary_json(all_trials, stats, out_dir / "summary.json")
-
-    console.print(render_trial_telemetry_table(all_trials))
-    console.print(render_comparison_table(stats))
+    _export_and_print_results(pairs, stats, args.output_dir)
     return 0
 
 
