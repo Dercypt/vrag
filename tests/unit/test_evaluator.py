@@ -141,3 +141,27 @@ def test_comparative_evaluator_context_manager_closes_generator() -> None:
         assert not client.is_closed
 
     assert client.is_closed
+
+
+def test_trial_telemetry_zero_denominator_rates_return_zero() -> None:
+    from vrag.models import ConfusionMatrix, StageLatencies, TrialTelemetry
+
+    empty_trial = TrialTelemetry(
+        trial_id="zero_denom",
+        pdf_sha256="deadbeef",
+        prompt="Test prompt",
+        model_name="llama3.1:8b-instruct-q4_K_M",
+        mode=PipelineMode.VERIFIED_B,
+        latencies=StageLatencies(t_chunk=0.1, t_retrieve=0.1, t_generate=0.1, t_verify=0.1),
+        atomic_factscore=0.0,
+        entailment_consistency=0.0,
+        citation_precision=0.0,
+        citation_recall=0.0,
+        confusion_matrix=ConfusionMatrix(),
+        peak_ram_mb=100.0,
+        output_summary="",
+    )
+    assert empty_trial.hallucination_error_rate_pct == 0.0
+    assert empty_trial.intrinsic_hallucination_rate_pct == 0.0
+    assert empty_trial.extrinsic_hallucination_rate_pct == 0.0
+    assert empty_trial.citation_accuracy_pct == 0.0

@@ -149,3 +149,22 @@ def test_chunker_validation_edge_cases() -> None:
 
     with pytest.raises(ValueError, match="similarity_threshold must be in"):
         semantic_cosine_chunk("Sentence one. Sentence two.", similarity_threshold=0.0)
+
+
+def test_chunk_pages_semantic_within_page_mode_and_empty_inputs() -> None:
+    from vrag.chunker import split_sentences
+
+    assert split_sentences("   \n\t ") == []
+    assert chunk_pages_semantic([], embed_fn=lambda s: [[1.0] for _ in s]) == []
+
+    pages = [
+        PDFPage(page_number=1, text="Alpha sentence one."),
+        PDFPage(page_number=2, text="Beta sentence two."),
+    ]
+    chunks = chunk_pages_semantic(
+        pages,
+        similarity_threshold=0.75,
+        embed_fn=lambda s: [[1.0, 0.0] for _ in s],
+        cross_page=False,
+    )
+    assert [(c.chunk_id, c.page_number) for c in chunks] == [("C1", 1), ("C2", 2)]

@@ -109,3 +109,15 @@ def test_cli_main_doctor_flag() -> None:
     # Running --doctor against local environment
     exit_code = main(["--doctor"])
     assert exit_code in (0, 1)
+
+
+def test_cli_main_pdf_with_explicit_simulation_flag(tmp_path: Path) -> None:
+    sample_pdf = tmp_path / "sim_doc.pdf"
+    sample_pdf.write_bytes(
+        b"Bang et al. (2025) evaluated 7B models.\fQian et al. (2025) proposed NLI pruning."
+    )
+    out_dir = tmp_path / "out"
+    exit_code = main(["--pdf", str(sample_pdf), "--simulation", "--output-dir", str(out_dir)])
+    assert exit_code == 0
+    assert (out_dir / "telemetry.csv").exists()
+    assert (out_dir / "summary.json").exists()

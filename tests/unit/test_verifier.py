@@ -91,6 +91,24 @@ def test_verify_and_prune_summary_handles_empty_input() -> None:
     assert report.confusion_matrix.total == 0
 
 
+def test_evaluate_unverified_summary_handles_empty_and_partial_citations() -> None:
+    chunks = [Chunk(chunk_id="C1", text="Vaswani et al. (2017) proposed attention.", page_number=1)]
+    empty_report = evaluate_unverified_summary("   ", chunks)
+    assert empty_report.verified_summary == ""
+    assert empty_report.confusion_matrix.total == 0
+
+    # Partial valid citation [C1, C99] still scores against valid chunk C1 in Condition A
+    partial = "Vaswani et al. (2017) proposed attention [C1, C99]."
+    report = evaluate_unverified_summary(
+        partial,
+        chunks,
+        nli_scorer=lambda _p, _h: NLIScore(label=NLILabel.ENTAILMENT, entailment_prob=0.95),
+    )
+    assert report.confusion_matrix.tp == 1
+    assert report.claim_results[0].citation_exists is False
+    assert report.citation_precision == pytest.approx(0.5)
+
+
 def test_deberta_nli_scorer_import_error_provides_actionable_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
