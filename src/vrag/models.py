@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+# --- Experiment Constants & Enums ---
+
 APPROVED_MODELS: tuple[str, ...] = (
     "llama3.1:8b-instruct-q4_K_M",
     "mistral:7b-instruct-v0.3-q4_K_M",
@@ -46,6 +48,9 @@ class PipelineMode(str, Enum):
     VERIFIED_B = "condition_b_verified"
 
 
+# --- Document & Retrieval Contracts ---
+
+
 @dataclass(frozen=True)
 class PDFPage:
     """A single parsed page from an academic PDF document."""
@@ -69,6 +74,9 @@ class RetrievedPassage:
 
     chunk: Chunk
     score: float
+
+
+# --- Verification & Telemetry Contracts ---
 
 
 @dataclass(frozen=True)
@@ -152,6 +160,7 @@ class StageLatencies:
     t_verify: float = 0.0
 
     def __post_init__(self) -> None:
+        # Enforce LAW 5: every stage timing must be >= 0.0 before telemetry export.
         for name, val in (
             ("t_chunk", self.t_chunk),
             ("t_retrieve", self.t_retrieve),
@@ -187,6 +196,11 @@ class TrialTelemetry:
     intrinsic_hallucinations: int = 0
     extrinsic_hallucinations: int = 0
 
+    def _surviving_rate_pct(self, count: int) -> float:
+        """Compute percentage share among surviving output claims (TP + FP)."""
+        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
+        return (count / denom) * 100.0 if denom > 0 else 0.0
+
     @property
     def factual_precision_pct(self) -> float:
         """Metric 1: Factual Precision (FActScore) in percentage (0-100%)."""
@@ -195,20 +209,17 @@ class TrialTelemetry:
     @property
     def hallucination_error_rate_pct(self) -> float:
         """Overall hallucination error rate among surviving output claims (0-100%)."""
-        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
-        return (self.confusion_matrix.fp / denom) * 100.0 if denom > 0 else 0.0
+        return self._surviving_rate_pct(self.confusion_matrix.fp)
 
     @property
     def intrinsic_hallucination_rate_pct(self) -> float:
         """Intrinsic faithfulness contradiction rate among surviving output claims (0-100%)."""
-        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
-        return (self.intrinsic_hallucinations / denom) * 100.0 if denom > 0 else 0.0
+        return self._surviving_rate_pct(self.intrinsic_hallucinations)
 
     @property
     def extrinsic_hallucination_rate_pct(self) -> float:
         """Extrinsic factuality/citation fabrication rate among surviving output claims (0-100%)."""
-        denom = self.confusion_matrix.tp + self.confusion_matrix.fp
-        return (self.extrinsic_hallucinations / denom) * 100.0 if denom > 0 else 0.0
+        return self._surviving_rate_pct(self.extrinsic_hallucinations)
 
     @property
     def entailment_consistency_pct(self) -> float:
@@ -231,8 +242,7 @@ class TrialTelemetry:
         denom = self.citation_precision + self.citation_recall
         if denom <= 0.0:
             return 0.0
-        f1 = (2.0 * self.citation_precision * self.citation_recall) / denom
-        return f1 * 100.0
+        return ((2.0 * self.citation_precision * self.citation_recall) / denom) * 100.0
 
     @property
     def computational_latency_sec(self) -> float:
