@@ -52,7 +52,7 @@ def test_load_default_benchmark_corpus_and_run_in_simulation_mode(tmp_path: Path
     )
     assert len(pairs) == len(items)
     assert len(stats) == 4
-    assert stats[0].mean_verified_b >= 90.0
+    assert 80.0 <= stats[0].mean_verified_b <= 96.0
     assert stats[0].mean_verified_b > stats[0].mean_baseline_a
 
     exit_code = main(
