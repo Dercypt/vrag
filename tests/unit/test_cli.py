@@ -10,10 +10,13 @@ from vrag.cli import (
     format_metric_value,
     main,
     render_comparison_table,
+    render_model_comparison_table,
     run_doctor_check,
     run_synthetic_demo_benchmark,
 )
+from vrag.evaluator import run_student_pdf_benchmark
 from vrag.generator import OllamaHealthReport
+from vrag.models import APPROVED_MODELS
 
 
 def test_format_metric_value_formats_percentage_and_seconds() -> None:
@@ -28,6 +31,11 @@ def test_run_synthetic_demo_benchmark_executes_all_models_and_writes_artifacts(
 ) -> None:
     stats = run_synthetic_demo_benchmark(output_dir=tmp_path)
     assert len(stats) == 4
+    # Demo must produce realistic, non-0%/non-100% metrics showing hallucination reduction
+    for stat in stats[:3]:
+        assert 15.0 <= stat.mean_baseline_a <= 75.0
+        assert 75.0 <= stat.mean_verified_b <= 96.0
+        assert stat.mean_verified_b > stat.mean_baseline_a
 
     table = render_comparison_table(stats)
     assert table.row_count == 4
@@ -42,6 +50,26 @@ def test_run_synthetic_demo_benchmark_executes_all_models_and_writes_artifacts(
 
     assert (tmp_path / "telemetry.csv").exists()
     assert (tmp_path / "summary.json").exists()
+
+
+def test_render_model_comparison_table_displays_all_four_models() -> None:
+    sample_pdf = (
+        b"Bang et al. (2025) evaluated 7B to 9B models on HalluLens.\f"
+        b"Qian et al. (2025) introduced VeriCite for NLI claim pruning."
+    )
+    pairs, _ = run_student_pdf_benchmark(
+        pdf_bytes=sample_pdf,
+        pdf_name="demo.pdf",
+        models=APPROVED_MODELS,
+        simulation_mode=True,
+    )
+    table = render_model_comparison_table(pairs)
+    assert table.row_count == 4
+    console = Console(record=True, width=120)
+    console.print(table)
+    rendered = console.export_text()
+    for name in ("llama3.1", "gemma2", "mistral", "qwen2.5"):
+        assert name in rendered
 
 
 def test_cli_main_demo_flag_exits_zero(tmp_path: Path) -> None:

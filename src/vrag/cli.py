@@ -4,22 +4,19 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 
 from vrag.corpus import run_curated_corpus_benchmark
 from vrag.evaluator import (
-    ComparativeEvaluator,
     PairedStatisticalResult,
-    compute_suite_statistics,
     export_summary_json,
     export_telemetry_csv,
     run_student_pdf_benchmark,
 )
-from vrag.generator import OllamaGenerator, OllamaHealthReport, diagnose_ollama
-from vrag.models import APPROVED_MODELS, NLILabel, NLIScore, TrialTelemetry
+from vrag.generator import OllamaHealthReport, diagnose_ollama
+from vrag.models import APPROVED_MODELS, STANDARDIZED_SUMMARIZATION_PROMPT, TrialTelemetry
 
 console = Console()
 
@@ -93,85 +90,80 @@ def render_trial_telemetry_table(trials: list[TrialTelemetry]) -> Table:
     return table
 
 
+def render_model_comparison_table(
+    pairs: list[tuple[TrialTelemetry, TrialTelemetry]],
+) -> Table:
+    """Build a per-model Rich table showing visible hallucination reduction (Base -> Verified)."""
+    table = Table(title="Hallucination Reduction by Model (7B-9B Tier)")
+    for label, style, justify in (
+        ("Model", "bold magenta", "left"),
+        ("Base Halluc (%)", None, "right"),
+        ("Verified Halluc (%)", "bold green", "right"),
+        ("Intrinsic (A->B)", None, "center"),
+        ("Extrinsic (A->B)", None, "center"),
+        ("Verified FActScore", None, "right"),
+    ):
+        table.add_column(label, style=style, justify=justify)  # type: ignore[arg-type]
+
+    grouped: dict[str, list[tuple[TrialTelemetry, TrialTelemetry]]] = {}
+    for pair in pairs:
+        grouped.setdefault(pair[0].model_name, []).append(pair)
+
+    for model_name, model_pairs in grouped.items():
+        n = len(model_pairs)
+        base_h = sum(a.hallucination_error_rate_pct for a, _ in model_pairs) / n
+        ver_h = sum(b.hallucination_error_rate_pct for _, b in model_pairs) / n
+        intr_a = sum(a.intrinsic_hallucinations for a, _ in model_pairs)
+        intr_b = sum(b.intrinsic_hallucinations for _, b in model_pairs)
+        extr_a = sum(a.extrinsic_hallucinations for a, _ in model_pairs)
+        extr_b = sum(b.extrinsic_hallucinations for _, b in model_pairs)
+        ver_fs = sum(b.factual_precision_pct for _, b in model_pairs) / n
+        table.add_row(
+            model_name,
+            f"{base_h:.1f}%",
+            f"{ver_h:.1f}%",
+            f"{intr_a} -> {intr_b}",
+            f"{extr_a} -> {extr_b}",
+            f"{ver_fs:.1f}%",
+        )
+    return table
+
+
 def _export_and_print_results(
     pairs: list[tuple[TrialTelemetry, TrialTelemetry]],
     stats: list[PairedStatisticalResult],
     output_dir: Path | str,
 ) -> None:
-    """Persist CSV/JSON artifacts and render both Rich summary tables."""
+    """Persist CSV/JSON artifacts and render Rich comparative summary tables."""
     all_trials = [t for pair in pairs for t in pair]
     out_path = Path(output_dir)
     export_telemetry_csv(all_trials, out_path / "telemetry.csv")
     export_summary_json(all_trials, stats, out_path / "summary.json")
     console.print(render_trial_telemetry_table(all_trials))
+    console.print(render_model_comparison_table(pairs))
     console.print(render_comparison_table(stats))
 
 
 # --- Benchmark & Diagnostics Runners ---
 
+_DEMO_PDF_BYTES = (
+    b"Bang et al. (2025) evaluated 7B to 9B open-source models including Llama-3.1-8B, "
+    b"Gemma-2-9B, Mistral-7B, and Qwen-2.5-7B on HalluLens, finding 48% to 85% baseline error "
+    b"rates. Kadavath et al. (2022) showed smaller models act overconfident when wrong.\f"
+    b"Wang et al. (2025) proposed dynamic semantic chunking using cosine similarity thresholds. "
+    b"Qian et al. (2025) introduced VeriCite to prune unentailed claims via sentence-level NLI."
+)
+
 
 def run_synthetic_demo_benchmark(output_dir: Path | str) -> list[PairedStatisticalResult]:
-    """Run an offline deterministic multi-model benchmark sweep and export CSV/JSON artifacts."""
-    sample_docs = [
-        (
-            "doc1",
-            (
-                b"Vaswani et al. (2017) introduced the Transformer architecture using "
-                b"self-attention mechanisms. Self-attention computes token representations.\f"
-                b"Lewis et al. (2020) introduced Retrieval-Augmented Generation for NLP tasks."
-            ),
-            "Summarize the Transformer and RAG architectures.",
-        ),
-        (
-            "doc2",
-            (
-                b"He et al. (2021) presented DeBERTa using disentangled attention for NLI.\f"
-                b"Min et al. (2023) introduced FActScore for atomic factual precision evaluation."
-            ),
-            "How are NLI and FActScore used in factual verification?",
-        ),
-    ]
-
-    def demo_embed(texts: list[str]) -> list[list[float]]:
-        return [[1.0, 0.2] if ("Transformer" in t or "DeBERTa" in t) else [0.2, 1.0] for t in texts]
-
-    def demo_post(_url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if payload.get("keep_alive") == 0:
-            return {"done": True}
-        if "VERIFIABLE SUMMARY:" in str(payload.get("prompt", "")):
-            return {
-                "response": (
-                    "Vaswani et al. (2017) proposed the Transformer architecture [C1]. "
-                    "According to (FakeAuthor, 2024), recurrent gates are mandatory [C1]."
-                )
-            }
-        return {
-            "response": (
-                "Vaswani et al. (2017) proposed the Transformer architecture [C1]. "
-                "Recurrent gates completely replace attention in all modern LLMs [C1]."
-            )
-        }
-
-    def demo_nli(_premise: str, hypothesis: str) -> NLIScore:
-        if "recurrent gates" in hypothesis.lower():
-            return NLIScore(
-                label=NLILabel.CONTRADICTION,
-                entailment_prob=0.02,
-                contradiction_prob=0.95,
-            )
-        return NLIScore(label=NLILabel.ENTAILMENT, entailment_prob=0.96)
-
-    with ComparativeEvaluator(
-        generator=OllamaGenerator(http_post_fn=demo_post),
-        embed_fn=demo_embed,
-        nli_scorer=demo_nli,
-    ) as evaluator:
-        pairs = evaluator.run_sequential_model_sweep(
-            documents=sample_docs,
-            models=APPROVED_MODELS,
-            top_k=2,
-        )
-    stats = compute_suite_statistics(pairs)
+    """Run an offline deterministic 4-model benchmark sweep and export CSV/JSON artifacts."""
+    pairs, stats = run_student_pdf_benchmark(
+        pdf_bytes=_DEMO_PDF_BYTES,
+        pdf_name="thesis_demo.pdf",
+        models=APPROVED_MODELS,
+        top_k=2,
+        simulation_mode=True,
+    )
     _export_and_print_results(pairs, stats, output_dir)
     return stats
 
@@ -243,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--query",
         type=str,
-        default="Summarize the key contributions and methodology of this paper.",
+        default=STANDARDIZED_SUMMARIZATION_PROMPT,
         help="Prompt query to run across Condition A and Condition B.",
     )
     parser.add_argument(
@@ -255,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="Run deterministic offline comparative benchmark across all 3 models.",
+        help="Run deterministic offline comparative benchmark across all 4 models.",
     )
     parser.add_argument(
         "--simulation",
