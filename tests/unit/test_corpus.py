@@ -12,7 +12,7 @@ from vrag.corpus import (
     load_benchmark_corpus,
     run_curated_corpus_benchmark,
 )
-from vrag.models import GroundTruthSpec
+from vrag.models import APPROVED_MODELS, STANDARDIZED_SUMMARIZATION_PROMPT, GroundTruthSpec
 
 
 def test_build_ground_truth_oracle_classifies_supported_vs_traps() -> None:
@@ -37,23 +37,40 @@ def test_build_ground_truth_oracle_classifies_supported_vs_traps() -> None:
     assert not oracle("Quitaleg and Ramos (2019) evaluated 120 college modules.")
 
 
+def test_corpus_follows_manuscript_stratification_and_uniform_prompt() -> None:
+    """Chapter 3 (pp. 53-59): 40% QASPER, 30% SciTLDR, 30% SciFact with one uniform prompt."""
+    ensure_corpus_pdfs(DEFAULT_CORPUS_DIR)
+    items = load_benchmark_corpus(DEFAULT_CORPUS_DIR)
+    assert len(items) == 10
+
+    sources = [item.benchmark_source for item in items]
+    assert sources.count("QASPER") == 4
+    assert sources.count("SciTLDR") == 3
+    assert sources.count("SciFact") == 3
+    assert all(item.query == STANDARDIZED_SUMMARIZATION_PROMPT for item in items)
+
+
 def test_load_default_benchmark_corpus_and_run_in_simulation_mode(tmp_path: Path) -> None:
     ensure_corpus_pdfs(DEFAULT_CORPUS_DIR)
     items = load_benchmark_corpus(DEFAULT_CORPUS_DIR)
-    assert len(items) >= 6
+    assert len(items) == 10
     for item in items:
         assert item.pdf_bytes.startswith(b"%PDF")
         assert len(item.ground_truth.supported_claims) >= 2
 
     pairs, stats = run_curated_corpus_benchmark(
         corpus_dir=DEFAULT_CORPUS_DIR,
-        models=("llama3.1:8b-instruct-q4_K_M",),
+        models=APPROVED_MODELS,
         simulation_mode=True,
     )
-    assert len(pairs) == len(items)
+    # 10 stratified PDFs x 4 approved 7B-9B models = 40 paired observations (n >= 30)
+    assert len(pairs) == 40
     assert len(stats) == 4
-    assert 80.0 <= stats[0].mean_verified_b <= 96.0
-    assert stats[0].mean_verified_b > stats[0].mean_baseline_a
+    for stat in stats[:3]:
+        assert 15.0 <= stat.mean_baseline_a <= 75.0
+        assert 75.0 <= stat.mean_verified_b <= 96.0
+        assert stat.mean_verified_b > stat.mean_baseline_a
+        assert stat.t_pvalue < 0.05
 
     exit_code = main(
         [

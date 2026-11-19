@@ -1,6 +1,6 @@
 {
-  "corpus_name": "Thesis Writing 1 Controlled Academic PDF Hallucination Benchmark",
-  "version": "1.0.0",
+  "corpus_name": "Thesis Writing 1 Stratified Academic PDF Benchmark (40% QASPER, 30% SciTLDR, 30% SciFact)",
+  "version": "2.0.0",
   "documents": [
     {
       "pdf_filename": "01_semantic_segmentation.pdf",
@@ -9,12 +9,7 @@
         "Brådland et al. (2025) introduced the HOPE metric to evaluate how text chunking preserves semantic coherence and topic independence across academic documents. Their empirical benchmarks demonstrate that rigid 256-token fixed-size splitting slices academic arguments across boundaries and lowers downstream answer accuracy by 19%. Wang et al. (2025) resolved boundary slicing by grouping adjacent sentences using cosine similarity thresholds against contextual embeddings.",
         "Duarte et al. (2024) developed LumberChunker to detect narrative and topic shifts dynamically, producing self-contained variable-length passages for dense retrievers. Zhao et al. (2025) further confirmed via Mixtures of Text Chunking Learners that dynamic sentence-boundary segmentation operates with low latency on standard institutional CPU hardware."
       ],
-      "valid_citations": [
-        ["Brådland", "2025"],
-        ["Wang", "2025"],
-        ["Duarte", "2024"],
-        ["Zhao", "2025"]
-      ],
+      "valid_citations": [["Brådland", "2025"], ["Wang", "2025"], ["Duarte", "2024"], ["Zhao", "2025"]],
       "supported_claims": [
         "Brådland et al. (2025) introduced the HOPE metric to evaluate how text chunking preserves semantic coherence and topic independence across academic documents.",
         "Their empirical benchmarks demonstrate that rigid 256-token fixed-size splitting slices academic arguments across boundaries and lowers downstream answer accuracy by 19%.",
@@ -23,25 +18,12 @@
         "Zhao et al. (2025) further confirmed via Mixtures of Text Chunking Learners that dynamic sentence-boundary segmentation operates with low latency on standard institutional CPU hardware."
       ],
       "intrinsic_traps": [
-        "Brådland et al. (2025) proved that 256-token fixed-size splitting increases downstream answer accuracy by 19%.",
-        "Zhao et al. (2025) showed that dynamic sentence-boundary segmentation requires enterprise GPU clusters and freezes CPU hardware."
+        "Brådland et al. (2025) proved that 256-token fixed-size splitting increases downstream answer accuracy by 19%."
       ],
       "extrinsic_traps": [
-        "Paningbatan (2024) proved that cloud GPUs eliminate all chunking errors.",
-        "FabricatedAuthor (2025) replaced vector embeddings with quantum annealers."
+        "Paningbatan (2024) proved that cloud GPUs eliminate all chunking errors."
       ],
-      "prompts": [
-        {
-          "item_id": "seg_01",
-          "benchmark_source": "TRUE / SummEdits",
-          "query": "Summarize how fixed-size chunking affects RAG accuracy and how dynamic semantic chunking addresses this problem."
-        },
-        {
-          "item_id": "seg_02",
-          "benchmark_source": "Factcheck-Bench",
-          "query": "Describe the specific contributions of LumberChunker and Mixtures of Text Chunking Learners for local hardware."
-        }
-      ]
+      "prompts": [{"item_id": "qasper_01", "benchmark_source": "QASPER"}]
     },
     {
       "pdf_filename": "02_nli_citation_auditing.pdf",
@@ -50,12 +32,7 @@
         "Honovich et al. (2022) established the TRUE benchmark across 11 datasets and proved that binary Natural Language Inference entailment scoring outperforms ROUGE and BLEU at detecting factual inconsistencies. Min et al. (2023) introduced FActScore to decompose long-form generations into atomic claims and compute the exact proportion of supported facts.",
         "Chern et al. (2023) demonstrated via FacTool that language models frequently fabricate nonexistent paper titles, author surnames, and wrong publication years during scientific literature synthesis. Qian et al. (2025) presented VeriCite, a three-stage framework that verifies each statement against its cited passage via NLI and prunes unentailed claims before synthesis."
       ],
-      "valid_citations": [
-        ["Honovich", "2022"],
-        ["Min", "2023"],
-        ["Chern", "2023"],
-        ["Qian", "2025"]
-      ],
+      "valid_citations": [["Honovich", "2022"], ["Min", "2023"], ["Chern", "2023"], ["Qian", "2025"]],
       "supported_claims": [
         "Honovich et al. (2022) established the TRUE benchmark across 11 datasets and proved that binary Natural Language Inference entailment scoring outperforms ROUGE and BLEU at detecting factual inconsistencies.",
         "Min et al. (2023) introduced FActScore to decompose long-form generations into atomic claims and compute the exact proportion of supported facts.",
@@ -63,65 +40,34 @@
         "Qian et al. (2025) presented VeriCite, a three-stage framework that verifies each statement against its cited passage via NLI and prunes unentailed claims before synthesis."
       ],
       "intrinsic_traps": [
-        "Honovich et al. (2022) proved that ROUGE and BLEU outperform NLI entailment across all 11 datasets.",
-        "Qian et al. (2025) retained all unentailed statements in VeriCite without pruning."
+        "Honovich et al. (2022) proved that ROUGE and BLEU outperform NLI entailment across all 11 datasets."
       ],
       "extrinsic_traps": [
-        "FakeAuthor (2024) introduced recurrent citation gates for cloud APIs.",
-        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding."
+        "FakeAuthor (2024) introduced recurrent citation gates for cloud APIs."
       ],
-      "prompts": [
-        {
-          "item_id": "nli_01",
-          "benchmark_source": "TRUE / Factcheck-Bench",
-          "query": "Explain why NLI entailment and atomic FActScore decomposition are preferred over word-overlap metrics."
-        },
-        {
-          "item_id": "nli_02",
-          "benchmark_source": "HalluLens / VeriCite",
-          "query": "Summarize how FacTool and VeriCite address fabricated academic citations in RAG outputs."
-        }
-      ]
+      "prompts": [{"item_id": "qasper_02", "benchmark_source": "QASPER"}]
     },
     {
       "pdf_filename": "03_lightweight_llm_hallucinations.pdf",
       "title": "Calibration and Hallucination Rates in 7B to 9B Open-Source LLMs",
       "pages": [
         "Ji et al. (2023) categorized natural language generation failures into intrinsic hallucinations that contradict source text and extrinsic hallucinations that invent unverifiable claims. Kadavath et al. (2022) showed that smaller parameter language models are poorly calibrated at self-evaluation and exhibit high surface confidence when stating falsehoods.",
-        "Bang et al. (2025) evaluated 7B to 8B open-weight models including Llama-3.1-8B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%. Chuang et al. (2024) explained via Lookback Lens that attention gradually shifts away from source context toward newly generated tokens during long-form summarization."
+        "Bang et al. (2025) evaluated 7B to 9B open-weight models including Llama-3.1-8B, Gemma-2-9B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%. Chuang et al. (2024) explained via Lookback Lens that attention gradually shifts away from source context toward newly generated tokens during long-form summarization."
       ],
-      "valid_citations": [
-        ["Ji", "2023"],
-        ["Kadavath", "2022"],
-        ["Bang", "2025"],
-        ["Chuang", "2024"]
-      ],
+      "valid_citations": [["Ji", "2023"], ["Kadavath", "2022"], ["Bang", "2025"], ["Chuang", "2024"]],
       "supported_claims": [
         "Ji et al. (2023) categorized natural language generation failures into intrinsic hallucinations that contradict source text and extrinsic hallucinations that invent unverifiable claims.",
         "Kadavath et al. (2022) showed that smaller parameter language models are poorly calibrated at self-evaluation and exhibit high surface confidence when stating falsehoods.",
-        "Bang et al. (2025) evaluated 7B to 8B open-weight models including Llama-3.1-8B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%.",
+        "Bang et al. (2025) evaluated 7B to 9B open-weight models including Llama-3.1-8B, Gemma-2-9B, Mistral-7B, and Qwen-2.5-7B on the HalluLens benchmark, recording baseline hallucination rates between 48% and 85%.",
         "Chuang et al. (2024) explained via Lookback Lens that attention gradually shifts away from source context toward newly generated tokens during long-form summarization."
       ],
       "intrinsic_traps": [
-        "Bang et al. (2025) recorded baseline hallucination rates below 5% on 7B to 8B open-weight models.",
-        "Kadavath et al. (2022) proved that smaller models are perfectly calibrated at self-policing falsehoods."
+        "Bang et al. (2025) recorded baseline hallucination rates below 5% on 7B to 9B open-weight models."
       ],
       "extrinsic_traps": [
-        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding.",
         "Smithson (2026) trained 700B commercial models on synthetic student essays."
       ],
-      "prompts": [
-        {
-          "item_id": "hal_01",
-          "benchmark_source": "HalluLens",
-          "query": "Compare intrinsic and extrinsic hallucinations and report the empirical error rates observed on 7B to 8B models."
-        },
-        {
-          "item_id": "hal_02",
-          "benchmark_source": "SummEdits",
-          "query": "Why do lightweight 7B to 9B models drift away from uploaded PDFs during long-form summarization?"
-        }
-      ]
+      "prompts": [{"item_id": "qasper_03", "benchmark_source": "QASPER"}]
     },
     {
       "pdf_filename": "04_institutional_hardware_rag.pdf",
@@ -130,12 +76,7 @@
         "Izacard et al. (2022) demonstrated with Atlas that offloading factual storage to a dense retrieval index enables an 11B model to outperform an unguided 540B model on knowledge-intensive tasks. Shi et al. (2023) introduced REPLUG to prepend retrieved passages directly to frozen black-box language models without costly weight retraining.",
         "Mao et al. (2024) developed FIT-RAG to prune irrelevant prompt tokens and cut memory consumption in half while improving factual accuracy on constrained hardware. Peng et al. (2025) noted that constructing entity-relationship knowledge graphs in GraphRAG incurs heavy LLM token and indexing latency compared to flat dense vector indexing."
       ],
-      "valid_citations": [
-        ["Izacard", "2022"],
-        ["Shi", "2023"],
-        ["Mao", "2024"],
-        ["Peng", "2025"]
-      ],
+      "valid_citations": [["Izacard", "2022"], ["Shi", "2023"], ["Mao", "2024"], ["Peng", "2025"]],
       "supported_claims": [
         "Izacard et al. (2022) demonstrated with Atlas that offloading factual storage to a dense retrieval index enables an 11B model to outperform an unguided 540B model on knowledge-intensive tasks.",
         "Shi et al. (2023) introduced REPLUG to prepend retrieved passages directly to frozen black-box language models without costly weight retraining.",
@@ -143,25 +84,144 @@
         "Peng et al. (2025) noted that constructing entity-relationship knowledge graphs in GraphRAG incurs heavy LLM token and indexing latency compared to flat dense vector indexing."
       ],
       "intrinsic_traps": [
-        "Peng et al. (2025) showed that GraphRAG indexing uses fewer tokens and lower latency than flat vector indexing.",
-        "Shi et al. (2023) required full neural weight fine-tuning in REPLUG."
+        "Peng et al. (2025) showed that GraphRAG indexing uses fewer tokens and lower latency than flat vector indexing."
       ],
       "extrinsic_traps": [
-        "FabricatedAuthor (2025) proved unverified speculative claims replace empirical grounding.",
         "Paningbatan (2024) deployed multi-agent enterprise clusters in all classrooms."
       ],
-      "prompts": [
-        {
-          "item_id": "hw_01",
-          "benchmark_source": "TRUE",
-          "query": "Summarize how Atlas, REPLUG, and FIT-RAG enable lightweight black-box models to run accurately on local hardware."
-        },
-        {
-          "item_id": "hw_02",
-          "benchmark_source": "Factcheck-Bench",
-          "query": "Explain the computational tradeoffs between GraphRAG and dense vector retrieval on institutional computers."
-        }
-      ]
+      "prompts": [{"item_id": "qasper_04", "benchmark_source": "QASPER"}]
+    },
+    {
+      "pdf_filename": "05_abstractive_summarization_fidelity.pdf",
+      "title": "Abstractive Condensation Fidelity in Scientific Summarization",
+      "pages": [
+        "Cachola et al. (2020) introduced SciTLDR to benchmark extreme summarization of peer-reviewed scientific papers using author-verified and expert-written summaries. Tam et al. (2023) found that instruction-tuned language models regularly blend unrelated entities and insert outside claims when summarizing dense informational text.",
+        "Laban et al. (2023) presented SummEdits to test whether models detect subtle factual flips in summaries and concluded that lightweight open-source models frequently miss subtle contradictions. Xu et al. (2023b) proved that compact 4K retrieval-augmented models outperform 16K long-context windows with up to four times faster summarization."
+      ],
+      "valid_citations": [["Cachola", "2020"], ["Tam", "2023"], ["Laban", "2023"], ["Xu", "2023b"]],
+      "supported_claims": [
+        "Cachola et al. (2020) introduced SciTLDR to benchmark extreme summarization of peer-reviewed scientific papers using author-verified and expert-written summaries.",
+        "Tam et al. (2023) found that instruction-tuned language models regularly blend unrelated entities and insert outside claims when summarizing dense informational text.",
+        "Laban et al. (2023) presented SummEdits to test whether models detect subtle factual flips in summaries and concluded that lightweight open-source models frequently miss subtle contradictions.",
+        "Xu et al. (2023b) proved that compact 4K retrieval-augmented models outperform 16K long-context windows with up to four times faster summarization."
+      ],
+      "intrinsic_traps": [
+        "Xu et al. (2023b) proved that 16K long-context prompts run four times faster than retrieval-augmented 4K models."
+      ],
+      "extrinsic_traps": [
+        "Kowalski (2023) replaced all summarization benchmarks with synthetic quizzes."
+      ],
+      "prompts": [{"item_id": "scitldr_01", "benchmark_source": "SciTLDR"}]
+    },
+    {
+      "pdf_filename": "06_adaptive_rag_condensation.pdf",
+      "title": "Adaptive Filtering and Self-Reflective RAG Pipelines",
+      "pages": [
+        "Asai et al. (2023) developed Self-RAG to train models with reflection tokens that critique passage relevance and claim support prior to output synthesis. Yan et al. (2024) introduced Corrective RAG to evaluate retrieved passages and decompose them into sentence-level knowledge strips that remove irrelevant noise.",
+        "Jiang et al. (2023) proposed FLARE to trigger fresh document retrieval whenever token confidence drops mid-paragraph during long-form summarization. Ding et al. (2025) presented Rowen to detect inconsistencies across perturbed queries and trigger targeted passage verification."
+      ],
+      "valid_citations": [["Asai", "2023"], ["Yan", "2024"], ["Jiang", "2023"], ["Ding", "2025"]],
+      "supported_claims": [
+        "Asai et al. (2023) developed Self-RAG to train models with reflection tokens that critique passage relevance and claim support prior to output synthesis.",
+        "Yan et al. (2024) introduced Corrective RAG to evaluate retrieved passages and decompose them into sentence-level knowledge strips that remove irrelevant noise.",
+        "Jiang et al. (2023) proposed FLARE to trigger fresh document retrieval whenever token confidence drops mid-paragraph during long-form summarization.",
+        "Ding et al. (2025) presented Rowen to detect inconsistencies across perturbed queries and trigger targeted passage verification."
+      ],
+      "intrinsic_traps": [
+        "Yan et al. (2024) removed sentence-level filtering in Corrective RAG to preserve noisy paragraphs."
+      ],
+      "extrinsic_traps": [
+        "Delgado (2024) trained a 120B self-reflective decoder on mobile phones."
+      ],
+      "prompts": [{"item_id": "scitldr_02", "benchmark_source": "SciTLDR"}]
+    },
+    {
+      "pdf_filename": "07_statement_entity_alignment.pdf",
+      "title": "Hierarchical Entity Alignment and Real-Time Verification",
+      "pages": [
+        "Liu et al. (2025) proposed hierarchical semantic piece verification to cross-check both sentence-level propositions and named entities such as author names and dates with low compute cost. Yuan et al. (2026) developed SeaRAG to rank evidence at both the statement level and the named-entity level so models stop mixing authors across passages.",
+        "Zhang et al. (2026) introduced RAG-Governor to enforce latency service-level objectives while auditing trustworthiness on institutional hardware. Liu et al. (2026) presented Fast and Faithful to flag unsupported tokens in long documents using lightweight verification adapters."
+      ],
+      "valid_citations": [["Liu", "2025"], ["Yuan", "2026"], ["Zhang", "2026"], ["Liu", "2026"]],
+      "supported_claims": [
+        "Liu et al. (2025) proposed hierarchical semantic piece verification to cross-check both sentence-level propositions and named entities such as author names and dates with low compute cost.",
+        "Yuan et al. (2026) developed SeaRAG to rank evidence at both the statement level and the named-entity level so models stop mixing authors across passages.",
+        "Zhang et al. (2026) introduced RAG-Governor to enforce latency service-level objectives while auditing trustworthiness on institutional hardware.",
+        "Liu et al. (2026) presented Fast and Faithful to flag unsupported tokens in long documents using lightweight verification adapters."
+      ],
+      "intrinsic_traps": [
+        "Zhang et al. (2026) ignored latency budgets and required multi-minute verification delays."
+      ],
+      "extrinsic_traps": [
+        "Nakahara (2024) showed that entity alignment degrades citation accuracy."
+      ],
+      "prompts": [{"item_id": "scitldr_03", "benchmark_source": "SciTLDR"}]
+    },
+    {
+      "pdf_filename": "08_scifact_atomic_claim_verification.pdf",
+      "title": "Scientific Claim Verification and Entailment Rationales",
+      "pages": [
+        "Wadden et al. (2020) introduced SciFact to pair atomic scientific claims with supporting or refuting peer-reviewed literature rationales for automated verification. Guo et al. (2022) formalized automated fact-checking into three stages: claim detection, evidence retrieval, and NLI claim verification.",
+        "Wang et al. (2024) evaluated verification systems on Factcheck-Bench at claim, sentence, and document levels, proving fine-grained sentence verification catches significantly more errors than paragraph scoring. Bandaru (2023) deployed HADES to block ungrounded LLM claims before end users see the output."
+      ],
+      "valid_citations": [["Wadden", "2020"], ["Guo", "2022"], ["Wang", "2024"], ["Bandaru", "2023"]],
+      "supported_claims": [
+        "Wadden et al. (2020) introduced SciFact to pair atomic scientific claims with supporting or refuting peer-reviewed literature rationales for automated verification.",
+        "Guo et al. (2022) formalized automated fact-checking into three stages: claim detection, evidence retrieval, and NLI claim verification.",
+        "Wang et al. (2024) evaluated verification systems on Factcheck-Bench at claim, sentence, and document levels, proving fine-grained sentence verification catches significantly more errors than paragraph scoring.",
+        "Bandaru (2023) deployed HADES to block ungrounded LLM claims before end users see the output."
+      ],
+      "intrinsic_traps": [
+        "Wang et al. (2024) proved that paragraph-level scoring catches more factual errors than claim-level verification."
+      ],
+      "extrinsic_traps": [
+        "Vargas (2024) replaced NLI classifiers with random token pruning."
+      ],
+      "prompts": [{"item_id": "scifact_01", "benchmark_source": "SciFact"}]
+    },
+    {
+      "pdf_filename": "09_uncertainty_and_semantic_entropy.pdf",
+      "title": "Semantic Entropy and Self-Contradiction Detection in LLMs",
+      "pages": [
+        "Kuhn et al. (2023) applied bidirectional NLI entailment to group differently phrased answers sharing identical meaning for linguistic-invariant uncertainty estimation. Farquhar et al. (2024) introduced semantic entropy in Nature to show that raw token probabilities fail to detect confabulations compared to meaning-level consistency.",
+        "Manakul et al. (2023) proposed SelfCheckGPT to detect hallucinations by sampling multiple responses, though multi-sampling multiplies compute latency on local hardware. Mündler et al. (2024) examined self-contradictory hallucinations and showed that external document grounding remains essential even when internal contradictions are checked."
+      ],
+      "valid_citations": [["Kuhn", "2023"], ["Farquhar", "2024"], ["Manakul", "2023"], ["Mündler", "2024"]],
+      "supported_claims": [
+        "Kuhn et al. (2023) applied bidirectional NLI entailment to group differently phrased answers sharing identical meaning for linguistic-invariant uncertainty estimation.",
+        "Farquhar et al. (2024) introduced semantic entropy in Nature to show that raw token probabilities fail to detect confabulations compared to meaning-level consistency.",
+        "Manakul et al. (2023) proposed SelfCheckGPT to detect hallucinations by sampling multiple responses, though multi-sampling multiplies compute latency on local hardware.",
+        "Mündler et al. (2024) examined self-contradictory hallucinations and showed that external document grounding remains essential even when internal contradictions are checked."
+      ],
+      "intrinsic_traps": [
+        "Farquhar et al. (2024) concluded that raw token probabilities alone reliably detect all confabulations."
+      ],
+      "extrinsic_traps": [
+        "Bauer (2023) proved that sampling 50 responses cuts local CPU latency in half."
+      ],
+      "prompts": [{"item_id": "scifact_02", "benchmark_source": "SciFact"}]
+    },
+    {
+      "pdf_filename": "10_rag_taxonomy_and_pipeline_gains.pdf",
+      "title": "Hallucination Taxonomies and Retrieval-Verification Tradeoffs",
+      "pages": [
+        "Huang et al. (2025) separated modern LLM errors into factuality hallucinations and faithfulness hallucinations, concluding that retrieval grounding and post-hoc verification mitigate errors without retraining. Gao et al. (2023) categorized RAG into Naive RAG, Advanced RAG, and Modular RAG, showing that rigid fixed chunking triggers faithfulness failures.",
+        "Huang and Huang (2026) demonstrated that upgrading retrieval and verification pipelines improves factual accuracy more than scaling up to larger expensive models. Dhuliawala et al. (2024) introduced Chain-of-Verification to verify initial draft claims independently and prevent models from repeating biased first-draft errors."
+      ],
+      "valid_citations": [["Huang", "2025"], ["Gao", "2023"], ["Huang", "2026"], ["Dhuliawala", "2024"]],
+      "supported_claims": [
+        "Huang et al. (2025) separated modern LLM errors into factuality hallucinations and faithfulness hallucinations, concluding that retrieval grounding and post-hoc verification mitigate errors without retraining.",
+        "Gao et al. (2023) categorized RAG into Naive RAG, Advanced RAG, and Modular RAG, showing that rigid fixed chunking triggers faithfulness failures.",
+        "Huang and Huang (2026) demonstrated that upgrading retrieval and verification pipelines improves factual accuracy more than scaling up to larger expensive models.",
+        "Dhuliawala et al. (2024) introduced Chain-of-Verification to verify initial draft claims independently and prevent models from repeating biased first-draft errors."
+      ],
+      "intrinsic_traps": [
+        "Huang and Huang (2026) found that scaling model parameters improves factuality more than upgrading retrieval and verification."
+      ],
+      "extrinsic_traps": [
+        "Moreau (2025) eliminated RAG indexing by fine-tuning 7B models on every student PDF."
+      ],
+      "prompts": [{"item_id": "scifact_03", "benchmark_source": "SciFact"}]
     }
   ]
 }

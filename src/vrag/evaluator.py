@@ -641,7 +641,8 @@ def _sim_http_post(_url: str, payload: dict[str, object]) -> dict[str, object]:
     dated = [item for item in candidates if _YEAR_RE.search(item[1])]
     pool = dated if len(dated) >= 2 else candidates
 
-    seed_int = int(hashlib.sha256(f"{model_tag}:{prompt[-120:]}".encode()).hexdigest()[:8], 16)
+    seed_key = f"{model_tag}:{prompt[-120:]}:{passages[0][1][:80]}"
+    seed_int = int(hashlib.sha256(seed_key.encode()).hexdigest()[:8], 16)
     variant = seed_int % 4
 
     def pick(offset: int) -> tuple[str, str]:
