@@ -45,12 +45,12 @@ pip install -e ".[dev,ui]"
 ### Offline Execution & Internet Connectivity
 
 The entire system is designed for **100% offline execution** (LAW 2):
-- **Streamlit Web UI**: Serves strictly over local loopback (`http://localhost:8501`) and requires zero internet. Features proactive daemon status indicators (`🟢 Online` / `⚠️ Offline`), in-app expandable troubleshooting guides, light/dark theme toggle, 4-metric overview cards, a 3-model hallucination comparison table (`Llama-3.1-8B`, `Mistral-7B`, `Qwen-2.5-7B`), an interactive trial inspector showing flagged Condition A hallucinations alongside Condition B pruned claims, and collapsible statistical telemetry.
-- **Environment Doctor (`--doctor`)**: CLI command (`python3 -m vrag.cli --doctor`) that verifies loopback compliance (LAW 2), daemon reachability at `http://localhost:11434`, and reports missing vs installed models with exact pull commands.
-- **Deterministic Simulation Mode (Fast Offline)**: Runs completely without internet or external model downloads, using deterministic hash-projected bag-of-words embeddings, model-aware claim generation grounded on the uploaded PDF's sentences, and an automatic PDF-grounded claim oracle (`_build_pdf_claim_oracle`) so metrics avoid 0%/100% outliers.
-- **Persistent HTTP Keep-Alive & Connection Pooling**: Generator queries and daemon health checks route through persistent `httpx.Client` sessions configured with `HTTPTransport(retries=3)` and keep-alive connection pooling (`max_keepalive_connections=10`, `keepalive_expiry=120.0`). This eliminates repeated TCP handshakes and OS loopback resolution overhead (yielding a measured ~4.3x reduction in connection setup latency) while guaranteeing transparent retry resilience across multi-prompt sweeps.
-- **Automatic Fallback on Connection Refusal**: If local Ollama is offline or returns `[Errno 61] Connection refused` while running the benchmark, execution automatically falls back to Deterministic Simulation Mode with a diagnostic notice rather than aborting.
-- **Live Ollama + Local HF Mode**: Once Ollama models are pulled and HuggingFace weights (`all-MiniLM-L6-v2`, `cross-encoder/nli-deberta-v3-small`) are cached in `~/.cache/huggingface`, execution runs 100% locally on CPU/loopback with zero internet connectivity.
+- **Minimal Pure-Python Streamlit UI**: Serves strictly over local loopback (`http://localhost:8501`) with zero custom CSS/HTML/JS. Displays 4 headline metric cards (`st.metric`), the **Base RAG vs. Verification-Driven RAG Comparison Table**, a **4-model hallucination reduction table** (`Llama-3.1-8B`, `Gemma-2-9B`, `Mistral-7B`, `Qwen-2.5-7B`), an interactive trial inspector showing flagged Condition A hallucinations alongside Condition B pruned claims, and CSV/JSON export.
+- **Environment Doctor (`--doctor`)**: CLI command (`python3 -m vrag.cli --doctor`) that verifies loopback compliance (LAW 2), daemon reachability at `http://localhost:11434`, and reports missing vs installed 7B–9B models with exact pull commands.
+- **Deterministic Simulation Mode (Fast Offline)**: Runs completely without internet or model downloads, using deterministic hash-projected bag-of-words embeddings, HalluLens-calibrated 4-model claim generation grounded on the uploaded PDF's sentences, and an automatic PDF-grounded claim oracle (`_build_pdf_claim_oracle`) so no metric collapses to 0% or 100% outliers.
+- **Persistent HTTP Keep-Alive & Connection Pooling**: Generator queries and daemon health checks route through persistent `httpx.Client` sessions configured with `HTTPTransport(retries=3)` and keep-alive connection pooling (`max_keepalive_connections=10`, `keepalive_expiry=120.0`).
+- **Automatic Fallback on Connection Refusal**: If local Ollama is offline or returns `[Errno 61] Connection refused` while running the benchmark, execution automatically falls back to Offline Simulation Mode with a diagnostic notice rather than aborting.
+- **Live Ollama + Local HF Mode**: Once the 4 Ollama 7B–9B models are pulled and HuggingFace weights (`all-MiniLM-L6-v2`, `cross-encoder/nli-deberta-v3-small`) are cached in `~/.cache/huggingface`, execution runs 100% locally on standard 8 GB institutional hardware with zero internet connectivity.
 
 ---
 
@@ -58,12 +58,12 @@ The entire system is designed for **100% offline execution** (LAW 2):
 
 | Module | Primary Responsibility | Enforced Laws |
 | :--- | :--- | :--- |
-| `src/vrag/models.py` | Immutable dataclasses (`Chunk`, `ClaimVerificationResult`, `ConfusionMatrix`, `TrialTelemetry`) | LAW 1, LAW 5 |
+| `src/vrag/models.py` | Immutable dataclasses, 4 approved 7B–9B models, `STANDARDIZED_SUMMARIZATION_PROMPT`, telemetry metrics | LAW 1, LAW 3, LAW 5 |
 | `src/vrag/chunker.py` | `fixed_window_chunk(pdf_text, token_size=256)` & `semantic_cosine_chunk(pdf_text, similarity_threshold=0.75)` | LAW 3 |
-| `src/vrag/retriever.py` | Local FAISS index construction and top-$k$ retrieval with `[Chunk_ID]` & page metadata | LAW 2, LAW 3 |
-| `src/vrag/generator.py` | Offline Ollama HTTP client (`http://localhost:11434`) with persistent keep-alive pooling & auto-retry, bounded citation prompts, sequential `keep_alive=0` unload | LAW 2, LAW 3, LAW 4 |
-| `src/vrag/verifier.py` | `pysbd` + atomic claim decomposition, parenthetical & narrative `(Author, Year)` check, `cross-encoder/nli-deberta-v3-small` pruning gate, ground-truth oracle support | LAW 1, LAW 2 |
+| `src/vrag/retriever.py` | Local FAISS `IndexFlatIP` cosine retrieval with `[Chunk_ID]` & page metadata | LAW 2, LAW 3 |
+| `src/vrag/generator.py` | Offline Ollama HTTP client (`http://localhost:11434`) with keep-alive pooling, bounded citation prompts, sequential `keep_alive=0` unload | LAW 2, LAW 3, LAW 4 |
+| `src/vrag/verifier.py` | `pysbd` + atomic claim decomposition, parenthetical & narrative `(Author, Year)` check, `cross-encoder/nli-deberta-v3-small` pruning gate, oracle evaluation | LAW 1, LAW 2 |
 | `src/vrag/evaluator.py` | Paired Condition A vs Condition B runner, stage timers ($t_{\text{chunk}}, t_{\text{retrieve}}, t_{\text{generate}}, t_{\text{verify}}$), Chapter 3 metrics & intrinsic/extrinsic rates, SD, % error reduction, `ttest_rel` & `wilcoxon` | LAW 3, LAW 4, LAW 5 |
-| `src/vrag/corpus.py` | Thesis Writing 1 curated digital PDF benchmark corpus (`data/benchmark_corpus/`) & deterministic ground-truth claim oracle | LAW 1, LAW 3, LAW 5 |
-| `src/vrag/cli.py` | CLI entrypoint (`--pdf`, `--corpus`, `--demo`, `--doctor`) for comparative tables & CSV/JSON export | LAW 5 |
-| `src/vrag/ui.py` | Minimal Streamlit UI with light/dark theme toggle, 4-metric overview cards, 3-model hallucination breakdown, interactive trial inspector, and Condition A/B claim logs | LAW 1, LAW 5 |
+| `src/vrag/corpus.py` | Thesis Writing 1 stratified PDF corpus (40% QASPER, 30% SciTLDR, 30% SciFact) & deterministic ground-truth claim oracle | LAW 1, LAW 3, LAW 5 |
+| `src/vrag/cli.py` | CLI entrypoint (`--pdf`, `--corpus`, `--demo`, `--doctor`) for 4-model reduction & statistical tables + CSV/JSON export | LAW 5 |
+| `src/vrag/ui.py` | Minimal native pure-Python Streamlit UI (zero CSS/HTML) showing 4 metrics, comparison table, 4-model hallucination reduction, and trial proof | LAW 1, LAW 5 |
