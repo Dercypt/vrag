@@ -459,7 +459,7 @@ def test_build_model_hallucination_rows_and_base_evidence() -> None:
     )
 
     model_rows = build_model_hallucination_rows(pairs)
-    assert len(model_rows) == 3
+    assert len(model_rows) == 4
     for row in model_rows:
         assert "Model" in row
         assert "Base Hallucination Rate" in row

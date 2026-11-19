@@ -31,18 +31,18 @@ All pipeline operations—PDF ingestion (`pymupdf`), sentence segmentation (`pys
 For any comparative evaluation trial $i \in \{1, \dots, N\}$, **Condition A (Baseline Standard RAG)** and **Condition B (Verification-Driven RAG)** must be evaluated under identical experimental conditions:
 
 - Identical source PDF document (verified via SHA-256 digest).
-- Identical user query / summarization prompt core.
-- Identical local LLM tag (`llama3.1:8b-instruct-q4_K_M`, `mistral:7b-instruct-v0.3-q4_K_M`, or `qwen2.5:7b-instruct-q4_K_M`).
+- Identical standardized user query / summarization prompt core.
+- Identical local LLM tag (`llama3.1:8b-instruct-q4_K_M`, `gemma2:9b-instruct-q4_K_M`, `mistral:7b-instruct-v0.3-q4_K_M`, or `qwen2.5:7b-instruct-q4_K_M`).
 - Identical deterministic decoding hyperparameters (`temperature=0.0`, `seed=42`) and retrieval budget (`top_k`).
 
 ---
 
 ## LAW 4 — Sequential Single-Model Memory Safety (Hardware Constraint)
 
-Target hardware is a **2019 MacBook Pro** with constrained unified/system RAM.
+Target hardware is a **standard 8 GB institutional desktop computer** (4.5 GB–6.5 GB 4-bit quantized footprint).
 
-- At most **one** 7B–8B quantized Ollama LLM may reside in memory at any point in time.
-- Multi-model benchmark sweeps must execute strictly sequentially (`llama3.1` $\rightarrow$ `mistral` $\rightarrow$ `qwen2.5`), never concurrently via threads/async workers.
+- At most **one** 7B–9B quantized Ollama LLM may reside in memory at any point in time.
+- Multi-model benchmark sweeps must execute strictly sequentially (`llama3.1` $\rightarrow$ `gemma2` $\rightarrow$ `mistral` $\rightarrow$ `qwen2.5`), never concurrently via threads/async workers.
 - When transitioning between models, the harness must explicitly issue an unload request (`keep_alive: 0`) to the local Ollama daemon and record peak process RSS memory (`peak_ram_mb`).
 
 ---

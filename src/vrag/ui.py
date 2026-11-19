@@ -52,6 +52,7 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
 
 _FRIENDLY_MODEL_NAMES: dict[str, str] = {
     "llama3.1:8b-instruct-q4_K_M": "Llama-3.1-8B",
+    "gemma2:9b-instruct-q4_K_M": "Gemma-2-9B",
     "mistral:7b-instruct-v0.3-q4_K_M": "Mistral-7B",
     "qwen2.5:7b-instruct-q4_K_M": "Qwen-2.5-7B",
 }

@@ -157,7 +157,12 @@ def test_law3_experimental_parity_enforcement() -> None:
 
 @pytest.mark.law
 def test_law4_sequential_single_model_unload() -> None:
-    """LAW 4: Transitioning between 7B-8B models must unload the previous model first."""
+    """LAW 4: Transitioning across all four 7B-9B models must unload the previous model first."""
+    from vrag.models import APPROVED_MODELS
+
+    assert len(APPROVED_MODELS) == 4
+    assert "gemma2:9b-instruct-q4_K_M" in APPROVED_MODELS
+
     gen = OllamaGenerator()
     gen.ensure_single_model_loaded("llama3.1:8b-instruct-q4_K_M")
     assert gen.active_model == "llama3.1:8b-instruct-q4_K_M"
@@ -167,6 +172,14 @@ def test_law4_sequential_single_model_unload() -> None:
     gen.ensure_single_model_loaded("mistral:7b-instruct-v0.3-q4_K_M")
     assert gen.active_model == "mistral:7b-instruct-v0.3-q4_K_M"
     assert gen.unload_history == ["llama3.1:8b-instruct-q4_K_M"]
+
+    # Switching to Gemma-2-9B must automatically unload Mistral
+    gen.ensure_single_model_loaded("gemma2:9b-instruct-q4_K_M")
+    assert gen.active_model == "gemma2:9b-instruct-q4_K_M"
+    assert gen.unload_history == [
+        "llama3.1:8b-instruct-q4_K_M",
+        "mistral:7b-instruct-v0.3-q4_K_M",
+    ]
 
 
 @pytest.mark.law

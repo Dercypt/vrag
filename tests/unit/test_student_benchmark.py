@@ -86,8 +86,8 @@ def test_simulation_avoids_outliers_and_all_models_hallucinate() -> None:
         simulation_mode=True,
     )
 
-    # 4 prompts x 3 models = 12 paired trials
-    assert len(pairs) == 12
+    # 4 prompts x 4 models = 16 paired trials
+    assert len(pairs) == 16
     assert len(stats) == 4
 
     # Quality metrics must not collapse to 0% or 100% outliers
