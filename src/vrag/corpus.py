@@ -13,7 +13,12 @@ from vrag.evaluator import (
     _build_simulation_evaluator,
     compute_suite_statistics,
 )
-from vrag.models import APPROVED_MODELS, GroundTruthSpec, TrialTelemetry
+from vrag.models import (
+    APPROVED_MODELS,
+    STANDARDIZED_SUMMARIZATION_PROMPT,
+    GroundTruthSpec,
+    TrialTelemetry,
+)
 from vrag.verifier import (
     GroundTruthFn,
     content_tokens,
@@ -157,7 +162,7 @@ def load_benchmark_corpus(
                     pdf_filename=pdf_filename,
                     pdf_bytes=pdf_bytes,
                     benchmark_source=str(prompt_entry.get("benchmark_source", "Curated")),
-                    query=str(prompt_entry["query"]),
+                    query=str(prompt_entry.get("query") or STANDARDIZED_SUMMARIZATION_PROMPT),
                     ground_truth=gt_spec,
                 )
             )

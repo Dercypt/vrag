@@ -15,7 +15,7 @@ An agent MUST pause and ask for explicit approval before making any of the follo
      - Baseline chunk size (`token_size = 256`)
      - Semantic cosine similarity threshold (`similarity_threshold = 0.75`)
      - NLI entailment threshold (`entailment_threshold = 0.70`)
-     - Evaluated Ollama models (`llama3.1:8b-instruct-q4_K_M`, `mistral:7b-instruct-v0.3-q4_K_M`, `qwen2.5:7b-instruct-q4_K_M`)
+     - Evaluated Ollama 7B–9B models (`llama3.1:8b-instruct-q4_K_M`, `gemma2:9b-instruct-q4_K_M`, `mistral:7b-instruct-v0.3-q4_K_M`, `qwen2.5:7b-instruct-q4_K_M`)
 3. **Public Module Contracts & Telemetry Schema**:
    - Changing public function signatures in `chunker.py`, `retriever.py`, `generator.py`, `verifier.py`, or `evaluator.py`.
    - Modifying CSV/JSON column headers used for thesis statistical tables.

@@ -9,8 +9,15 @@ from enum import Enum
 
 APPROVED_MODELS: tuple[str, ...] = (
     "llama3.1:8b-instruct-q4_K_M",
+    "gemma2:9b-instruct-q4_K_M",
     "mistral:7b-instruct-v0.3-q4_K_M",
     "qwen2.5:7b-instruct-q4_K_M",
+)
+
+# Uniform single prompt per Chapter 3 (pp. 58-59) to isolate RAG architecture as the sole IV.
+STANDARDIZED_SUMMARIZATION_PROMPT: str = (
+    "Summarize the core research problem, proposed methodology, empirical findings, "
+    "and cited studies in this academic PDF using only verifiable facts from the text."
 )
 
 DEFAULT_STUDENT_BENCHMARK_PROMPTS: tuple[tuple[str, str], ...] = (
